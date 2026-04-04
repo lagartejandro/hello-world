@@ -1,7 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
 import * as route53 from 'aws-cdk-lib/aws-route53';
-import * as route53domains from 'aws-cdk-lib/aws-route53domains';
+import * as route53targets from 'aws-cdk-lib/aws-route53-targets';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import { Construct } from 'constructs';
 
 interface InfraStackProps extends cdk.StackProps {
@@ -19,54 +23,10 @@ export class InfraStack extends cdk.Stack {
 
     // -------------------------------------------------------------------------
     // Hosted Zone
-    // Route 53 public hosted zone — this is created first so we can pull the
-    // nameservers and hand them to the domain registration below.
+    // Route 53 public hosted zone for the pre-registered domain.
     // -------------------------------------------------------------------------
     this.hostedZone = new route53.PublicHostedZone(this, 'HostedZone', {
       zoneName: domainName,
-    });
-
-    // -------------------------------------------------------------------------
-    // Domain Registration
-    // Registers the domain via Route 53 Domains and points it at the hosted
-    // zone nameservers above.
-    //
-    // IMPORTANT: Fill in your contact details before deploying.
-    // AWS requires valid contact info — intentionally fake data will cause the
-    // registration to be rejected or suspended.
-    // -------------------------------------------------------------------------
-    const contact: route53domains.CfnDomain.ContactDetailProperty = {
-      firstName: 'FILL_IN',
-      lastName: 'FILL_IN',
-      email: 'FILL_IN@example.com',
-      phoneNumber: '+1.5555550100',       // format: +CountryCode.Number
-      addressLine1: 'FILL_IN',
-      city: 'FILL_IN',
-      state: 'FILL_IN',                  // 2-letter state/province code
-      countryCode: 'US',                 // ISO 3166 alpha-2
-      zipCode: 'FILL_IN',
-      contactType: 'PERSON',             // PERSON | COMPANY | ASSOCIATION | PUBLIC_BODY | RESELLER
-    };
-
-    const nameservers = cdk.Fn.split(',', cdk.Fn.join(',', this.hostedZone.hostedZoneNameServers!));
-
-    new route53domains.CfnDomain(this, 'Domain', {
-      domainName,
-      durationInYears: 1,
-      autoRenew: true,
-      adminContact: contact,
-      registrantContact: contact,
-      techContact: contact,
-      // Wire the domain to the hosted zone nameservers
-      nameservers: [
-        { name: cdk.Fn.select(0, nameservers) },
-        { name: cdk.Fn.select(1, nameservers) },
-        { name: cdk.Fn.select(2, nameservers) },
-        { name: cdk.Fn.select(3, nameservers) },
-      ],
-      privacyProtectAdminContact: true,
-      privacyProtectRegistrantContact: true,
-      privacyProtectTechContact: true,
     });
 
     // -------------------------------------------------------------------------
@@ -81,6 +41,54 @@ export class InfraStack extends cdk.Stack {
     });
 
     // -------------------------------------------------------------------------
+    // S3 Bucket (private — CloudFront accesses it via OAC)
+    // -------------------------------------------------------------------------
+    const bucket = new s3.Bucket(this, 'WebsiteBucket', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
+
+    // -------------------------------------------------------------------------
+    // CloudFront Distribution
+    // -------------------------------------------------------------------------
+    const distribution = new cloudfront.Distribution(this, 'Distribution', {
+      defaultBehavior: {
+        origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      },
+      domainNames: [domainName, `www.${domainName}`],
+      certificate: this.certificate,
+      defaultRootObject: 'index.html',
+    });
+
+    // -------------------------------------------------------------------------
+    // Deploy website files to S3
+    // -------------------------------------------------------------------------
+    new s3deploy.BucketDeployment(this, 'DeployWebsite', {
+      sources: [s3deploy.Source.asset('./website')],
+      destinationBucket: bucket,
+      distribution,
+      distributionPaths: ['/*'],
+    });
+
+    // -------------------------------------------------------------------------
+    // Route 53 — alias records pointing apex + www at CloudFront
+    // -------------------------------------------------------------------------
+    const cfTarget = new route53targets.CloudFrontTarget(distribution);
+
+    new route53.ARecord(this, 'AliasApex', {
+      zone: this.hostedZone,
+      target: route53.RecordTarget.fromAlias(cfTarget),
+    });
+
+    new route53.ARecord(this, 'AliasWww', {
+      zone: this.hostedZone,
+      recordName: 'www',
+      target: route53.RecordTarget.fromAlias(cfTarget),
+    });
+
+    // -------------------------------------------------------------------------
     // Outputs
     // -------------------------------------------------------------------------
     new cdk.CfnOutput(this, 'HostedZoneId', {
@@ -90,12 +98,17 @@ export class InfraStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, 'CertificateArn', {
       value: this.certificate.certificateArn,
-      description: 'ACM Certificate ARN (us-east-1, usable with CloudFront)',
+      description: 'ACM Certificate ARN',
     });
 
     new cdk.CfnOutput(this, 'Nameservers', {
       value: cdk.Fn.join(', ', this.hostedZone.hostedZoneNameServers!),
-      description: 'Route 53 nameservers assigned to the hosted zone',
+      description: 'Route 53 nameservers — update these in your registrar',
+    });
+
+    new cdk.CfnOutput(this, 'DistributionDomain', {
+      value: distribution.distributionDomainName,
+      description: 'CloudFront domain (useful for testing before DNS propagates)',
     });
   }
 }
