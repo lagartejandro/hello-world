@@ -7,7 +7,6 @@ import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as apigwv2Integrations from 'aws-cdk-lib/aws-apigatewayv2-integrations';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 export class RedditTrackerStack extends cdk.Stack {
@@ -16,7 +15,7 @@ export class RedditTrackerStack extends cdk.Stack {
 
     // -------------------------------------------------------------------------
     // DynamoDB — stock mention counts keyed by date + ticker
-    // TTL is set to 30 days so old data is automatically purged.
+    // TTL purges data older than 30 days automatically.
     // -------------------------------------------------------------------------
     const table = new dynamodb.Table(this, 'MentionsTable', {
       tableName: 'stock-mentions',
@@ -28,22 +27,6 @@ export class RedditTrackerStack extends cdk.Stack {
     });
 
     // -------------------------------------------------------------------------
-    // SSM Parameters — placeholder values, fill in before first run.
-    // After deploying, run the commands printed in SetupInstructions below.
-    // -------------------------------------------------------------------------
-    const clientIdParam = new ssm.StringParameter(this, 'RedditClientId', {
-      parameterName: '/stock-tracker/reddit-client-id',
-      stringValue: 'PLACEHOLDER',
-      description: 'Reddit API client ID (from https://www.reddit.com/prefs/apps)',
-    });
-
-    const clientSecretParam = new ssm.StringParameter(this, 'RedditClientSecret', {
-      parameterName: '/stock-tracker/reddit-client-secret',
-      stringValue: 'PLACEHOLDER',
-      description: 'Reddit API client secret',
-    });
-
-    // -------------------------------------------------------------------------
     // Shared Lambda config
     // -------------------------------------------------------------------------
     const lambdaDefaults: Partial<lambdaNode.NodejsFunctionProps> = {
@@ -51,14 +34,13 @@ export class RedditTrackerStack extends cdk.Stack {
       bundling: {
         minify: true,
         sourceMap: false,
-        // AWS SDK v3 is available in the Node 20 runtime but we bundle it
-        // for explicit version control.
         externalModules: [],
       },
     };
 
     // -------------------------------------------------------------------------
-    // Poller Lambda — runs on a schedule, polls Reddit, writes to DynamoDB
+    // Poller Lambda — runs on a schedule, polls Reddit, writes to DynamoDB.
+    // Uses Reddit's public JSON API — no credentials needed.
     // -------------------------------------------------------------------------
     const pollerFn = new lambdaNode.NodejsFunction(this, 'PollerFunction', {
       ...lambdaDefaults,
@@ -69,14 +51,10 @@ export class RedditTrackerStack extends cdk.Stack {
       description: 'Polls Reddit for NYSE stock mentions and writes counts to DynamoDB',
       environment: {
         TABLE_NAME: table.tableName,
-        REDDIT_CLIENT_ID_PARAM: clientIdParam.parameterName,
-        REDDIT_CLIENT_SECRET_PARAM: clientSecretParam.parameterName,
       },
     });
 
     table.grantWriteData(pollerFn);
-    clientIdParam.grantRead(pollerFn);
-    clientSecretParam.grantRead(pollerFn);
 
     // Run every 30 minutes
     new events.Rule(this, 'PollerSchedule', {
@@ -103,9 +81,9 @@ export class RedditTrackerStack extends cdk.Stack {
 
     // -------------------------------------------------------------------------
     // HTTP API Gateway
-    // GET /tickers              → today's top 50 tickers
-    // GET /tickers?date=YYYY-MM-DD → specific date
-    // GET /tickers?limit=100    → up to 200 results
+    // GET /tickers                   → today's top 50 tickers
+    // GET /tickers?date=YYYY-MM-DD   → specific date
+    // GET /tickers?limit=100         → up to 200 results
     // -------------------------------------------------------------------------
     const api = new apigwv2.HttpApi(this, 'StockApi', {
       apiName: 'stock-mentions-api',
@@ -130,15 +108,9 @@ export class RedditTrackerStack extends cdk.Stack {
       description: 'Stock mentions API endpoint',
     });
 
-    new cdk.CfnOutput(this, 'SetupInstructions', {
-      value: [
-        'Set your Reddit API credentials:',
-        `aws ssm put-parameter --name /stock-tracker/reddit-client-id --value YOUR_CLIENT_ID --overwrite`,
-        `aws ssm put-parameter --name /stock-tracker/reddit-client-secret --value YOUR_CLIENT_SECRET --overwrite`,
-        'Then manually invoke the poller once to test:',
-        `aws lambda invoke --function-name ${pollerFn.functionName} /dev/null`,
-      ].join(' | '),
-      description: 'Run these commands after deploying to activate the tracker',
+    new cdk.CfnOutput(this, 'TestPollerCommand', {
+      value: `aws lambda invoke --function-name ${pollerFn.functionName} --region us-east-1 /dev/null`,
+      description: 'Manually trigger the poller to test',
     });
   }
 }

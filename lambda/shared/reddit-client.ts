@@ -1,4 +1,7 @@
+// Uses Reddit's public JSON API — no OAuth credentials required.
+// Rate limit: ~1 req/second. We add delays in the poller to stay safe.
 const USER_AGENT = 'StockMentionsBot/1.0 (personal project)';
+const BASE = 'https://www.reddit.com';
 
 export interface RedditPost {
   id: string;
@@ -13,46 +16,16 @@ export interface RedditComment {
   score: number;
 }
 
-interface RedditTokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-}
-
 interface RedditListing {
   data: {
     children: Array<{ kind: string; data: Record<string, unknown> }>;
   };
 }
 
-export async function getAccessToken(clientId: string, clientSecret: string): Promise<string> {
-  const resp = await fetch('https://www.reddit.com/api/v1/access_token', {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': USER_AGENT,
-    },
-    body: 'grant_type=client_credentials',
-  });
-
-  if (!resp.ok) {
-    throw new Error(`Reddit auth failed: ${resp.status} ${await resp.text()}`);
-  }
-
-  const data = (await resp.json()) as RedditTokenResponse;
-  return data.access_token;
-}
-
-export async function fetchHotPosts(token: string, subreddit: string, limit = 100): Promise<RedditPost[]> {
+export async function fetchHotPosts(subreddit: string, limit = 100): Promise<RedditPost[]> {
   const resp = await fetch(
-    `https://oauth.reddit.com/r/${subreddit}/hot.json?limit=${limit}`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'User-Agent': USER_AGENT,
-      },
-    }
+    `${BASE}/r/${subreddit}/hot.json?limit=${limit}`,
+    { headers: { 'User-Agent': USER_AGENT } }
   );
 
   if (!resp.ok) {
@@ -72,15 +45,10 @@ export async function fetchHotPosts(token: string, subreddit: string, limit = 10
     }));
 }
 
-export async function fetchComments(token: string, subreddit: string, postId: string): Promise<RedditComment[]> {
+export async function fetchComments(subreddit: string, postId: string): Promise<RedditComment[]> {
   const resp = await fetch(
-    `https://oauth.reddit.com/r/${subreddit}/comments/${postId}.json?limit=200&depth=2`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'User-Agent': USER_AGENT,
-      },
-    }
+    `${BASE}/r/${subreddit}/comments/${postId}.json?limit=200&depth=2`,
+    { headers: { 'User-Agent': USER_AGENT } }
   );
 
   if (!resp.ok) {

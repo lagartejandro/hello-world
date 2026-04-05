@@ -75,12 +75,12 @@ export async function getNyseTickerSet(): Promise<Set<string>> {
           exchange === 'NYSE American'
         );
       })
-      .map(row => row[tickerIdx])
+      .map(row => String(row[tickerIdx]))
   );
 
   cacheTimestamp = Date.now();
-  console.log(`Loaded ${cachedTickers.size} NYSE tickers from SEC EDGAR`);
-  return cachedTickers;
+  console.log(`Loaded ${cachedTickers!.size} NYSE tickers from SEC EDGAR`);
+  return cachedTickers!;
 }
 
 // Extracts valid NYSE tickers from a block of text.
