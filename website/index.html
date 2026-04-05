@@ -85,27 +85,44 @@ class Ribbon {
     this.life  -= this.decay;
   }
 
+  _path(pts) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length - 1; i++) {
+      ctx.quadraticCurveTo(
+        pts[i].x, pts[i].y,
+        (pts[i].x + pts[i + 1].x) * 0.5,
+        (pts[i].y + pts[i + 1].y) * 0.5,
+      );
+    }
+    ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+    ctx.stroke();
+  }
+
   draw() {
     const pts = this.trail;
-    if (pts.length < 2) return;
+    if (pts.length < 3) return;
 
+    // No shadowBlur — use 'lighter' composite so overlapping ribbons
+    // add up to bright hot spots naturally, at zero blur cost.
     ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap  = 'round';
     ctx.lineJoin = 'round';
-    ctx.shadowColor = `hsl(${this.hue}, 100%, 65%)`;
-    ctx.shadowBlur  = 12;
 
-    for (let i = 1; i < pts.length; i++) {
-      const t = i / pts.length; // 0 = old tail, 1 = head
-      ctx.globalAlpha = t * t * this.life * 0.8;
-      // Hue shifts slightly warmer toward the head
-      ctx.strokeStyle = `hsl(${this.hue + t * 18}, 95%, ${42 + t * 28}%)`;
-      ctx.lineWidth   = this.width * t * this.life;
-      ctx.beginPath();
-      ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
-      ctx.lineTo(pts[i].x,     pts[i].y);
-      ctx.stroke();
-    }
+    // Ghost tail — full length, thin, dim
+    ctx.globalAlpha = this.life * 0.18;
+    ctx.strokeStyle = `hsl(${this.hue}, 90%, 52%)`;
+    ctx.lineWidth   = this.width * 0.6;
+    this._path(pts);
+
+    // Bright head — front 40% of trail, thicker, vivid
+    const split = Math.floor(pts.length * 0.6);
+    ctx.globalAlpha = this.life * this.life * 0.75;
+    ctx.strokeStyle = `hsl(${this.hue + 15}, 95%, 70%)`;
+    ctx.lineWidth   = this.width * this.life;
+    this._path(pts.slice(split));
+
     ctx.restore();
   }
 }
@@ -117,22 +134,26 @@ class Bloom {
   constructor(x, y, hue, maxR = 130) {
     this.x    = x;
     this.y    = y;
-    this.hue  = hue;
-    this.life = 1;
     this.maxR = maxR;
+    this.life = 1;
+    // Pre-build static color strings — avoid template literals every frame
+    this.c0 = `hsl(${hue},      100%, 80%)`;
+    this.c1 = `hsl(${hue + 12},  90%, 60%)`;
+    this.c2 = `hsl(${hue + 25},  80%, 45%)`;
   }
   update() { this.life -= 0.016; }
   draw() {
-    const r    = this.maxR * (1 - this.life);
-    const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, Math.max(r, 1));
-    grad.addColorStop(0,   `hsla(${this.hue},      100%, 80%, ${this.life * 0.4})`);
-    grad.addColorStop(0.35,`hsla(${this.hue + 12},  90%, 60%, ${this.life * 0.18})`);
-    grad.addColorStop(1,   `hsla(${this.hue + 25},  80%, 45%, 0)`);
+    const r    = Math.max(this.maxR * (1 - this.life), 1);
+    const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, r);
+    grad.addColorStop(0,    this.c0);
+    grad.addColorStop(0.35, this.c1);
+    grad.addColorStop(1,    this.c2);
     ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.fillStyle = grad;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = this.life * 0.22;
+    ctx.fillStyle   = grad;
     ctx.beginPath();
-    ctx.arc(this.x, this.y, Math.max(r, 1), 0, Math.PI * 2);
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
