@@ -127,44 +127,11 @@ class Ribbon {
   }
 }
 
-// ── Soft radial bloom ─────────────────────────────────────────────────────────
-const blooms = [];
-
-class Bloom {
-  constructor(x, y, hue, maxR = 130) {
-    this.x    = x;
-    this.y    = y;
-    this.maxR = maxR;
-    this.life = 1;
-    // Pre-build static color strings — avoid template literals every frame
-    this.c0 = `hsl(${hue},      100%, 80%)`;
-    this.c1 = `hsl(${hue + 12},  90%, 60%)`;
-    this.c2 = `hsl(${hue + 25},  80%, 45%)`;
-  }
-  update() { this.life -= 0.016; }
-  draw() {
-    const r    = Math.max(this.maxR * (1 - this.life), 1);
-    const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, r);
-    grad.addColorStop(0,    this.c0);
-    grad.addColorStop(0.35, this.c1);
-    grad.addColorStop(1,    this.c2);
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = this.life * 0.22;
-    ctx.fillStyle   = grad;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-}
-
 // ── Spawn helpers ─────────────────────────────────────────────────────────────
 function spawnAt(x, y, hue, count = 18) {
   for (let i = 0; i < count; i++) {
     particles.push(new Ribbon(x, y, hue + (Math.random() - 0.5) * 22));
   }
-  blooms.push(new Bloom(x, y, hue));
 }
 
 function spawnKey(key, count = 18) {
@@ -182,7 +149,6 @@ function spawnSpace() {
     const speed = 2.5 + Math.random() * 3.5;
     particles.push(new Ribbon(cx, cy, hue + (i / n) * 50, angle, speed));
   }
-  blooms.push(new Bloom(cx, cy, hue % 360, 350));
 }
 
 function spawnEnter() {
@@ -228,12 +194,6 @@ function animate() {
   // Continuous trickle from held keys
   for (const key of heldKeys) {
     spawnKey(key, 3);
-  }
-
-  for (let i = blooms.length - 1; i >= 0; i--) {
-    blooms[i].update();
-    blooms[i].draw();
-    if (blooms[i].life <= 0) blooms.splice(i, 1);
   }
 
   for (let i = particles.length - 1; i >= 0; i--) {
