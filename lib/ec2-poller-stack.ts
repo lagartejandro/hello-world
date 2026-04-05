@@ -27,7 +27,7 @@ export class Ec2PollerStack extends cdk.Stack {
         local: {
           tryBundle(outputDir: string): boolean {
             try {
-              const entry = path.join(__dirname, '../lambda/poller/index.ts');
+              const entry = path.join(__dirname, '../lambda/poller/run.ts');
               execSync(
                 `npx esbuild "${entry}" --bundle --platform=node --target=node18 --outfile="${outputDir}/poller.js"`,
                 { stdio: 'inherit' }
@@ -42,7 +42,7 @@ export class Ec2PollerStack extends cdk.Stack {
         image: cdk.DockerImage.fromRegistry('node:18-alpine'),
         command: [
           'sh', '-c',
-          'npm install -g esbuild && esbuild /asset-input/poller/index.ts --bundle --platform=node --target=node18 --outfile=/asset-output/poller.js',
+          'npm install -g esbuild && esbuild /asset-input/poller/run.ts --bundle --platform=node --target=node18 --outfile=/asset-output/poller.js',
         ],
       },
     });
