@@ -6,30 +6,18 @@
   <title>lagartejandro.com</title>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    html, body { width: 100%; height: 100%; background: #0b0402; overflow: hidden; }
     canvas { display: block; }
     #hint {
       position: fixed;
       bottom: 28px;
       width: 100%;
       text-align: center;
-      color: rgba(255,255,255,0.22);
+      color: rgba(255, 180, 100, 0.2);
       font: 12px/1 'Helvetica Neue', Helvetica, sans-serif;
-      letter-spacing: 0.2em;
+      letter-spacing: 0.22em;
       text-transform: uppercase;
       pointer-events: none;
-      transition: opacity 2s;
-    }
-    #legend {
-      position: fixed;
-      top: 24px;
-      right: 24px;
-      color: rgba(255,255,255,0.18);
-      font: 11px/1.8 'Helvetica Neue', Helvetica, sans-serif;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      pointer-events: none;
-      text-align: right;
       transition: opacity 2s;
     }
   </style>
@@ -37,20 +25,10 @@
 <body>
 <canvas id="c"></canvas>
 <div id="hint">press any key</div>
-<div id="legend">
-  numbers — rings<br>
-  q–p — streams<br>
-  a–; — diamonds<br>
-  z–/ — starbursts<br>
-  space — shockwave<br>
-  enter — cascade<br>
-  backspace — erase
-</div>
 <script>
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
 const hint   = document.getElementById('hint');
-const legend = document.getElementById('legend');
 
 function resize() {
   canvas.width  = innerWidth;
@@ -59,9 +37,7 @@ function resize() {
 resize();
 addEventListener('resize', resize);
 
-// ── Keyboard layout → normalised screen position ─────────────────────────────
-// Each row has a horizontal offset mirroring real key stagger.
-// xFrac ∈ [0,1] maps to the full canvas width; yFrac to height.
+// ── Keyboard layout → normalised screen position ──────────────────────────────
 const ROWS = [
   { keys: '`1234567890-=',  xOff: 0.00, yFrac: 0.18 },
   { keys: 'qwertyuiop[]\\', xOff: 0.04, yFrac: 0.38 },
@@ -73,192 +49,150 @@ const KEY = {};
 ROWS.forEach(({ keys, xOff, yFrac }, row) => {
   [...keys].forEach((k, col) => {
     const xFrac = xOff + col / 13;
-    // Hue sweeps 0°→280° (red→blue) left-to-right across the keyboard.
-    KEY[k] = { xFrac, yFrac, hue: xFrac * 280, row };
+    // Warm sweep: left = rose-red (340°) → centre = red (0°) → right = amber (50°)
+    const hue = (xFrac * 70 + 340) % 360;
+    KEY[k] = { xFrac, yFrac, hue, row };
   });
 });
 
-// ── Particle ─────────────────────────────────────────────────────────────────
+// ── Flow ribbon particle ───────────────────────────────────────────────────────
 const particles = [];
+const TRAIL = 35;
 
-class Particle {
-  constructor(x, y, hue, row, opts = {}) {
-    this.x    = x;
-    this.y    = y;
-    this.hue  = hue;
-    this.row  = row;
-    this.life = 1;
-    this.size = Math.random() * 4 + 2;
-    this.rot  = Math.random() * Math.PI * 2;
-    this.rotV = (Math.random() - 0.5) * 0.1;
-    this.decay = Math.random() * 0.006 + 0.004;
-
-    const speed = opts.speed ?? (Math.random() * 3 + 1);
-    const angle = opts.angle ?? Math.random() * Math.PI * 2;
-    this.vx = Math.cos(angle) * speed;
-    this.vy = Math.sin(angle) * speed;
+class Ribbon {
+  constructor(x, y, hue, angle, speed) {
+    this.x     = x;
+    this.y     = y;
+    this.hue   = hue;
+    this.angle = angle  ?? Math.random() * Math.PI * 2;
+    this.speed = speed  ?? Math.random() * 2 + 0.4;
+    this.curl  = (Math.random() - 0.5) * 0.06; // direction drift per frame
+    this.width = Math.random() * 2.5 + 0.8;
+    this.life  = 1;
+    this.decay = Math.random() * 0.004 + 0.0025;
+    this.trail = [];
   }
 
   update() {
-    this.vx *= 0.985;
-    this.vy  = this.vy * 0.985 + 0.04; // soft gravity
-    this.x  += this.vx;
-    this.y  += this.vy;
-    this.rot += this.rotV;
-    this.life -= this.decay;
-    this.size *= 0.997;
+    this.trail.push({ x: this.x, y: this.y });
+    if (this.trail.length > TRAIL) this.trail.shift();
+
+    this.angle += this.curl;
+    // Tiny upward drift keeps things feeling airy
+    this.x += Math.cos(this.angle) * this.speed;
+    this.y += Math.sin(this.angle) * this.speed - 0.1;
+    this.speed *= 0.997;
+    this.life  -= this.decay;
   }
 
   draw() {
-    const a = Math.max(0, this.life * this.life);
-    ctx.save();
-    ctx.globalAlpha = a;
-    ctx.translate(this.x, this.y);
-    ctx.rotate(this.rot);
-    ctx.shadowColor = `hsl(${this.hue},100%,70%)`;
-    ctx.shadowBlur  = 14;
-    ctx.strokeStyle = `hsl(${this.hue},90%,75%)`;
-    ctx.fillStyle   = `hsl(${this.hue},90%,70%)`;
+    const pts = this.trail;
+    if (pts.length < 2) return;
 
-    switch (this.row) {
-      case 0: {
-        // Number row → expanding rings
-        ctx.beginPath();
-        ctx.arc(0, 0, this.size * 2.5, 0, Math.PI * 2);
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        break;
-      }
-      case 1: {
-        // QWERTY → elongated streaks
-        ctx.beginPath();
-        ctx.moveTo(-this.size * 3.5, 0);
-        ctx.lineTo( this.size * 3.5, 0);
-        ctx.lineWidth = this.size * 0.55;
-        ctx.stroke();
-        break;
-      }
-      case 2: {
-        // ASDF → solid diamonds
-        const s = this.size * 2;
-        ctx.beginPath();
-        ctx.moveTo(0, -s);
-        ctx.lineTo(s,  0);
-        ctx.lineTo(0,  s);
-        ctx.lineTo(-s, 0);
-        ctx.closePath();
-        ctx.fill();
-        break;
-      }
-      case 3: {
-        // ZXCV → 6-arm starbursts
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const a = (i / 6) * Math.PI * 2;
-          ctx.moveTo(0, 0);
-          ctx.lineTo(Math.cos(a) * this.size * 3, Math.sin(a) * this.size * 3);
-        }
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        break;
-      }
+    ctx.save();
+    ctx.lineCap  = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = `hsl(${this.hue}, 100%, 65%)`;
+    ctx.shadowBlur  = 12;
+
+    for (let i = 1; i < pts.length; i++) {
+      const t = i / pts.length; // 0 = old tail, 1 = head
+      ctx.globalAlpha = t * t * this.life * 0.8;
+      // Hue shifts slightly warmer toward the head
+      ctx.strokeStyle = `hsl(${this.hue + t * 18}, 95%, ${42 + t * 28}%)`;
+      ctx.lineWidth   = this.width * t * this.life;
+      ctx.beginPath();
+      ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+      ctx.lineTo(pts[i].x,     pts[i].y);
+      ctx.stroke();
     }
     ctx.restore();
   }
 }
 
-// ── Ripple ────────────────────────────────────────────────────────────────────
-const ripples = [];
+// ── Soft radial bloom ─────────────────────────────────────────────────────────
+const blooms = [];
 
-class Ripple {
-  constructor(x, y, hue) {
+class Bloom {
+  constructor(x, y, hue, maxR = 130) {
     this.x    = x;
     this.y    = y;
     this.hue  = hue;
     this.life = 1;
-    this.maxR = 150 + Math.random() * 180;
+    this.maxR = maxR;
   }
-  update() { this.life -= 0.014; }
+  update() { this.life -= 0.016; }
   draw() {
-    const r = this.maxR * (1 - this.life);
+    const r    = this.maxR * (1 - this.life);
+    const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, Math.max(r, 1));
+    grad.addColorStop(0,   `hsla(${this.hue},      100%, 80%, ${this.life * 0.4})`);
+    grad.addColorStop(0.35,`hsla(${this.hue + 12},  90%, 60%, ${this.life * 0.18})`);
+    grad.addColorStop(1,   `hsla(${this.hue + 25},  80%, 45%, 0)`);
     ctx.save();
-    ctx.globalAlpha = this.life * 0.5;
-    ctx.strokeStyle = `hsl(${this.hue},100%,75%)`;
-    ctx.shadowColor = `hsl(${this.hue},100%,75%)`;
-    ctx.shadowBlur  = 22;
-    ctx.lineWidth   = 1.5;
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.arc(this.x, this.y, Math.max(r, 1), 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 }
 
 // ── Spawn helpers ─────────────────────────────────────────────────────────────
-function spawnKey(key) {
+function spawnAt(x, y, hue, count = 18) {
+  for (let i = 0; i < count; i++) {
+    particles.push(new Ribbon(x, y, hue + (Math.random() - 0.5) * 22));
+  }
+  blooms.push(new Bloom(x, y, hue));
+}
+
+function spawnKey(key, count = 18) {
   const info = KEY[key.toLowerCase()];
   if (!info) return;
-
-  const x   = info.xFrac * canvas.width;
-  const y   = info.yFrac * canvas.height;
-  const hue = info.hue;
-  const n   = 18 + Math.floor(Math.random() * 14);
-
-  for (let i = 0; i < n; i++) {
-    particles.push(new Particle(x, y, hue + (Math.random() - 0.5) * 25, info.row));
-  }
-  ripples.push(new Ripple(x, y, hue));
+  spawnAt(info.xFrac * canvas.width, info.yFrac * canvas.height, info.hue, count);
 }
 
 function spawnSpace() {
-  const cx  = canvas.width / 2;
-  const cy  = canvas.height / 2;
-  const hue = Math.random() * 360;
-  const n   = 90;
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const hue = Math.random() * 50 + 330; // warm rose-red
+  const n   = 70;
   for (let i = 0; i < n; i++) {
     const angle = (i / n) * Math.PI * 2;
-    const speed = 3 + Math.random() * 5;
-    particles.push(new Particle(cx, cy, hue + i * (360 / n) * 0.3,
-      Math.floor(Math.random() * 4), { angle, speed }));
+    const speed = 2.5 + Math.random() * 3.5;
+    particles.push(new Ribbon(cx, cy, hue + (i / n) * 50, angle, speed));
   }
-  ripples.push(new Ripple(cx, cy, hue));
+  blooms.push(new Bloom(cx, cy, hue % 360, 350));
 }
 
 function spawnEnter() {
   for (let i = 0; i < 6; i++) {
     setTimeout(() => {
-      const x   = Math.random() * canvas.width;
-      const y   = Math.random() * canvas.height;
-      const hue = Math.random() * 360;
-      for (let j = 0; j < 28; j++) {
-        particles.push(new Particle(x, y, hue + j * 5, Math.floor(Math.random() * 4)));
-      }
-      ripples.push(new Ripple(x, y, hue));
-    }, i * 70);
+      const x   = canvas.width  * (0.1 + Math.random() * 0.8);
+      const y   = canvas.height * (0.1 + Math.random() * 0.8);
+      const hue = (Math.random() * 70 + 330) % 360;
+      spawnAt(x, y, hue, 24);
+    }, i * 75);
   }
 }
 
 // ── Input ─────────────────────────────────────────────────────────────────────
+const heldKeys = new Set();
 let erasing = false;
 let hinted  = false;
 
 addEventListener('keydown', e => {
-  if (e.repeat) return;
-  if (!hinted) {
-    hint.style.opacity   = '0';
-    legend.style.opacity = '0.18'; // already at that value; fade in handled by CSS default
-    hinted = true;
-  }
+  if (!hinted) { hint.style.opacity = '0'; hinted = true; }
 
-  switch (e.key) {
-    case ' ':         spawnSpace(); break;
-    case 'Enter':     spawnEnter(); break;
-    case 'Backspace': erasing = true; break;
-    default:          spawnKey(e.key);
-  }
+  if (e.key === 'Backspace') { erasing = true; return; }
+  if (e.key === ' ')         { if (!e.repeat) spawnSpace(); return; }
+  if (e.key === 'Enter')     { if (!e.repeat) spawnEnter(); return; }
+
+  if (!e.repeat) spawnKey(e.key, 20);
+  heldKeys.add(e.key.toLowerCase());
 });
 
 addEventListener('keyup', e => {
+  heldKeys.delete(e.key.toLowerCase());
   if (e.key === 'Backspace') erasing = false;
 });
 
@@ -266,14 +200,19 @@ addEventListener('keyup', e => {
 function animate() {
   requestAnimationFrame(animate);
 
-  // Semi-transparent black overlay creates the trailing / painting effect.
-  ctx.fillStyle = erasing ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.04)';
+  // Very slow fade → long painterly trails; hold Backspace to clear faster
+  ctx.fillStyle = erasing ? 'rgba(11,4,2,0.28)' : 'rgba(11,4,2,0.022)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  for (let i = ripples.length - 1; i >= 0; i--) {
-    ripples[i].update();
-    ripples[i].draw();
-    if (ripples[i].life <= 0) ripples.splice(i, 1);
+  // Continuous trickle from held keys
+  for (const key of heldKeys) {
+    spawnKey(key, 3);
+  }
+
+  for (let i = blooms.length - 1; i >= 0; i--) {
+    blooms[i].update();
+    blooms[i].draw();
+    if (blooms[i].life <= 0) blooms.splice(i, 1);
   }
 
   for (let i = particles.length - 1; i >= 0; i--) {
@@ -282,7 +221,7 @@ function animate() {
     if (particles[i].life <= 0) particles.splice(i, 1);
   }
 
-  if (particles.length > 3500) particles.splice(0, particles.length - 3500);
+  if (particles.length > 4000) particles.splice(0, particles.length - 4000);
 }
 
 animate();
