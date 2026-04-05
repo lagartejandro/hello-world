@@ -11,12 +11,18 @@
     "synth": "cdk synth"
   },
   "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
     "@types/node": "20.x",
     "aws-cdk": "2.x",
+    "esbuild": "^0.21.0",
     "typescript": "~5.4.5"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/client-ssm": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
     "aws-cdk-lib": "2.x",
-    "constructs": "^10.0.0"
+    "constructs": "^10.0.0",
+    "source-map-support": "^0.5.21"
   }
 }
