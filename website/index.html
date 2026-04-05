@@ -1,11 +1,291 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>lagartejandro.com</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    canvas { display: block; }
+    #hint {
+      position: fixed;
+      bottom: 28px;
+      width: 100%;
+      text-align: center;
+      color: rgba(255,255,255,0.22);
+      font: 12px/1 'Helvetica Neue', Helvetica, sans-serif;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      pointer-events: none;
+      transition: opacity 2s;
+    }
+    #legend {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      color: rgba(255,255,255,0.18);
+      font: 11px/1.8 'Helvetica Neue', Helvetica, sans-serif;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      pointer-events: none;
+      text-align: right;
+      transition: opacity 2s;
+    }
+  </style>
 </head>
 <body>
-  <h1>Hello World</h1>
+<canvas id="c"></canvas>
+<div id="hint">press any key</div>
+<div id="legend">
+  numbers — rings<br>
+  q–p — streams<br>
+  a–; — diamonds<br>
+  z–/ — starbursts<br>
+  space — shockwave<br>
+  enter — cascade<br>
+  backspace — erase
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const hint   = document.getElementById('hint');
+const legend = document.getElementById('legend');
+
+function resize() {
+  canvas.width  = innerWidth;
+  canvas.height = innerHeight;
+}
+resize();
+addEventListener('resize', resize);
+
+// ── Keyboard layout → normalised screen position ─────────────────────────────
+// Each row has a horizontal offset mirroring real key stagger.
+// xFrac ∈ [0,1] maps to the full canvas width; yFrac to height.
+const ROWS = [
+  { keys: '`1234567890-=',  xOff: 0.00, yFrac: 0.18 },
+  { keys: 'qwertyuiop[]\\', xOff: 0.04, yFrac: 0.38 },
+  { keys: "asdfghjkl;'",    xOff: 0.07, yFrac: 0.58 },
+  { keys: 'zxcvbnm,./',     xOff: 0.11, yFrac: 0.78 },
+];
+
+const KEY = {};
+ROWS.forEach(({ keys, xOff, yFrac }, row) => {
+  [...keys].forEach((k, col) => {
+    const xFrac = xOff + col / 13;
+    // Hue sweeps 0°→280° (red→blue) left-to-right across the keyboard.
+    KEY[k] = { xFrac, yFrac, hue: xFrac * 280, row };
+  });
+});
+
+// ── Particle ─────────────────────────────────────────────────────────────────
+const particles = [];
+
+class Particle {
+  constructor(x, y, hue, row, opts = {}) {
+    this.x    = x;
+    this.y    = y;
+    this.hue  = hue;
+    this.row  = row;
+    this.life = 1;
+    this.size = Math.random() * 4 + 2;
+    this.rot  = Math.random() * Math.PI * 2;
+    this.rotV = (Math.random() - 0.5) * 0.1;
+    this.decay = Math.random() * 0.006 + 0.004;
+
+    const speed = opts.speed ?? (Math.random() * 3 + 1);
+    const angle = opts.angle ?? Math.random() * Math.PI * 2;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+  }
+
+  update() {
+    this.vx *= 0.985;
+    this.vy  = this.vy * 0.985 + 0.04; // soft gravity
+    this.x  += this.vx;
+    this.y  += this.vy;
+    this.rot += this.rotV;
+    this.life -= this.decay;
+    this.size *= 0.997;
+  }
+
+  draw() {
+    const a = Math.max(0, this.life * this.life);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rot);
+    ctx.shadowColor = `hsl(${this.hue},100%,70%)`;
+    ctx.shadowBlur  = 14;
+    ctx.strokeStyle = `hsl(${this.hue},90%,75%)`;
+    ctx.fillStyle   = `hsl(${this.hue},90%,70%)`;
+
+    switch (this.row) {
+      case 0: {
+        // Number row → expanding rings
+        ctx.beginPath();
+        ctx.arc(0, 0, this.size * 2.5, 0, Math.PI * 2);
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        break;
+      }
+      case 1: {
+        // QWERTY → elongated streaks
+        ctx.beginPath();
+        ctx.moveTo(-this.size * 3.5, 0);
+        ctx.lineTo( this.size * 3.5, 0);
+        ctx.lineWidth = this.size * 0.55;
+        ctx.stroke();
+        break;
+      }
+      case 2: {
+        // ASDF → solid diamonds
+        const s = this.size * 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -s);
+        ctx.lineTo(s,  0);
+        ctx.lineTo(0,  s);
+        ctx.lineTo(-s, 0);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case 3: {
+        // ZXCV → 6-arm starbursts
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(a) * this.size * 3, Math.sin(a) * this.size * 3);
+        }
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        break;
+      }
+    }
+    ctx.restore();
+  }
+}
+
+// ── Ripple ────────────────────────────────────────────────────────────────────
+const ripples = [];
+
+class Ripple {
+  constructor(x, y, hue) {
+    this.x    = x;
+    this.y    = y;
+    this.hue  = hue;
+    this.life = 1;
+    this.maxR = 150 + Math.random() * 180;
+  }
+  update() { this.life -= 0.014; }
+  draw() {
+    const r = this.maxR * (1 - this.life);
+    ctx.save();
+    ctx.globalAlpha = this.life * 0.5;
+    ctx.strokeStyle = `hsl(${this.hue},100%,75%)`;
+    ctx.shadowColor = `hsl(${this.hue},100%,75%)`;
+    ctx.shadowBlur  = 22;
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ── Spawn helpers ─────────────────────────────────────────────────────────────
+function spawnKey(key) {
+  const info = KEY[key.toLowerCase()];
+  if (!info) return;
+
+  const x   = info.xFrac * canvas.width;
+  const y   = info.yFrac * canvas.height;
+  const hue = info.hue;
+  const n   = 18 + Math.floor(Math.random() * 14);
+
+  for (let i = 0; i < n; i++) {
+    particles.push(new Particle(x, y, hue + (Math.random() - 0.5) * 25, info.row));
+  }
+  ripples.push(new Ripple(x, y, hue));
+}
+
+function spawnSpace() {
+  const cx  = canvas.width / 2;
+  const cy  = canvas.height / 2;
+  const hue = Math.random() * 360;
+  const n   = 90;
+  for (let i = 0; i < n; i++) {
+    const angle = (i / n) * Math.PI * 2;
+    const speed = 3 + Math.random() * 5;
+    particles.push(new Particle(cx, cy, hue + i * (360 / n) * 0.3,
+      Math.floor(Math.random() * 4), { angle, speed }));
+  }
+  ripples.push(new Ripple(cx, cy, hue));
+}
+
+function spawnEnter() {
+  for (let i = 0; i < 6; i++) {
+    setTimeout(() => {
+      const x   = Math.random() * canvas.width;
+      const y   = Math.random() * canvas.height;
+      const hue = Math.random() * 360;
+      for (let j = 0; j < 28; j++) {
+        particles.push(new Particle(x, y, hue + j * 5, Math.floor(Math.random() * 4)));
+      }
+      ripples.push(new Ripple(x, y, hue));
+    }, i * 70);
+  }
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+let erasing = false;
+let hinted  = false;
+
+addEventListener('keydown', e => {
+  if (e.repeat) return;
+  if (!hinted) {
+    hint.style.opacity   = '0';
+    legend.style.opacity = '0.18'; // already at that value; fade in handled by CSS default
+    hinted = true;
+  }
+
+  switch (e.key) {
+    case ' ':         spawnSpace(); break;
+    case 'Enter':     spawnEnter(); break;
+    case 'Backspace': erasing = true; break;
+    default:          spawnKey(e.key);
+  }
+});
+
+addEventListener('keyup', e => {
+  if (e.key === 'Backspace') erasing = false;
+});
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+
+  // Semi-transparent black overlay creates the trailing / painting effect.
+  ctx.fillStyle = erasing ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.04)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    ripples[i].update();
+    ripples[i].draw();
+    if (ripples[i].life <= 0) ripples.splice(i, 1);
+  }
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].update();
+    particles[i].draw();
+    if (particles[i].life <= 0) particles.splice(i, 1);
+  }
+
+  if (particles.length > 3500) particles.splice(0, particles.length - 3500);
+}
+
+animate();
+</script>
 </body>
 </html>

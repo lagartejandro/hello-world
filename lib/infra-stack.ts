@@ -13,7 +13,7 @@ interface InfraStackProps extends cdk.StackProps {
 }
 
 export class InfraStack extends cdk.Stack {
-  public readonly hostedZone: route53.PublicHostedZone;
+  public readonly hostedZone: route53.IHostedZone;
   public readonly certificate: acm.Certificate;
 
   constructor(scope: Construct, id: string, props: InfraStackProps) {
@@ -23,10 +23,10 @@ export class InfraStack extends cdk.Stack {
 
     // -------------------------------------------------------------------------
     // Hosted Zone
-    // Route 53 public hosted zone for the pre-registered domain.
+    // Look up the existing hosted zone created when the domain was registered.
     // -------------------------------------------------------------------------
-    this.hostedZone = new route53.PublicHostedZone(this, 'HostedZone', {
-      zoneName: domainName,
+    this.hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
+      domainName,
     });
 
     // -------------------------------------------------------------------------
@@ -99,11 +99,6 @@ export class InfraStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'CertificateArn', {
       value: this.certificate.certificateArn,
       description: 'ACM Certificate ARN',
-    });
-
-    new cdk.CfnOutput(this, 'Nameservers', {
-      value: cdk.Fn.join(', ', this.hostedZone.hostedZoneNameServers!),
-      description: 'Route 53 nameservers — update these in your registrar',
     });
 
     new cdk.CfnOutput(this, 'DistributionDomain', {
