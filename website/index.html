@@ -7,7 +7,7 @@
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; background: #0b0402; overflow: hidden; }
-    canvas { display: block; }
+    canvas { display: block; touch-action: none; }
     #hint {
       position: fixed;
       bottom: 28px;
@@ -24,7 +24,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hint">press any key</div>
+<div id="hint">press a key · touch the screen</div>
 <script>
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
@@ -164,8 +164,46 @@ function spawnEnter() {
 
 // ── Input ─────────────────────────────────────────────────────────────────────
 const heldKeys = new Set();
+// Active touches: id → { x, y, hue, frames }
+const activeTouches = new Map();
+const MAX_TOUCH_RATE = 14; // max ribbons spawned per touch per frame
 let erasing = false;
 let hinted  = false;
+
+function hueFromPosition(x, y) {
+  // Same warm sweep as the keyboard: left = rose-red, right = amber
+  // Y adds a slight shift so top/bottom of screen feel different too
+  return ((x / canvas.width) * 70 + (y / canvas.height) * 20 + 330) % 360;
+}
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (!hinted) { hint.style.opacity = '0'; hinted = true; }
+  for (const t of e.changedTouches) {
+    const x   = t.clientX;
+    const y   = t.clientY;
+    const hue = hueFromPosition(x, y);
+    activeTouches.set(t.identifier, { x, y, hue, frames: 0 });
+    spawnAt(x, y, hue, 20); // initial burst, same as a keydown
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const touch = activeTouches.get(t.identifier);
+    if (!touch) continue;
+    touch.x   = t.clientX;
+    touch.y   = t.clientY;
+    touch.hue = hueFromPosition(touch.x, touch.y);
+  }
+}, { passive: false });
+
+function endTouch(e) {
+  for (const t of e.changedTouches) activeTouches.delete(t.identifier);
+}
+canvas.addEventListener('touchend',    endTouch);
+canvas.addEventListener('touchcancel', endTouch);
 
 addEventListener('keydown', e => {
   if (!hinted) { hint.style.opacity = '0'; hinted = true; }
@@ -194,6 +232,13 @@ function animate() {
   // Continuous trickle from held keys
   for (const key of heldKeys) {
     spawnKey(key, 3);
+  }
+
+  // Touch: ramp up spawn rate the longer a finger is held, cap at MAX_TOUCH_RATE
+  for (const touch of activeTouches.values()) {
+    touch.frames++;
+    const count = Math.min(3 + Math.floor(touch.frames / 8), MAX_TOUCH_RATE);
+    spawnAt(touch.x, touch.y, touch.hue, count);
   }
 
   for (let i = particles.length - 1; i >= 0; i--) {
