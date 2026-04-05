@@ -111,15 +111,15 @@ class Ribbon {
     ctx.lineJoin = 'round';
 
     // Ghost tail — full length, thin, dim
-    ctx.globalAlpha = this.life * 0.18;
-    ctx.strokeStyle = `hsl(${this.hue}, 90%, 52%)`;
+    ctx.globalAlpha = this.life * 0.11;
+    ctx.strokeStyle = `hsl(${this.hue}, 75%, 35%)`;
     ctx.lineWidth   = this.width * 0.6;
     this._path(pts);
 
     // Bright head — front 40% of trail, thicker, vivid
     const split = Math.floor(pts.length * 0.6);
-    ctx.globalAlpha = this.life * this.life * 0.75;
-    ctx.strokeStyle = `hsl(${this.hue + 15}, 95%, 70%)`;
+    ctx.globalAlpha = this.life * this.life * 0.5;
+    ctx.strokeStyle = `hsl(${this.hue + 15}, 85%, 52%)`;
     ctx.lineWidth   = this.width * this.life;
     this._path(pts.slice(split));
 
@@ -137,12 +137,12 @@ function spawnAt(x, y, hue, count = 18) {
 function spawnKey(key, count = 18) {
   const info = KEY[key.toLowerCase()];
   if (!info) return;
-  spawnAt(info.xFrac * canvas.width, info.yFrac * canvas.height, info.hue, count);
+  spawnAt(info.xFrac * canvas.width, info.yFrac * canvas.height, randomWarmHue(), count);
 }
 
 function spawnSpace() {
   const cx = canvas.width / 2, cy = canvas.height / 2;
-  const hue = Math.random() * 50 + 330; // warm rose-red
+  const hue = randomWarmHue();
   const n   = 70;
   for (let i = 0; i < n; i++) {
     const angle = (i / n) * Math.PI * 2;
@@ -156,7 +156,7 @@ function spawnEnter() {
     setTimeout(() => {
       const x   = canvas.width  * (0.1 + Math.random() * 0.8);
       const y   = canvas.height * (0.1 + Math.random() * 0.8);
-      const hue = (Math.random() * 70 + 330) % 360;
+      const hue = randomWarmHue();
       spawnAt(x, y, hue, 24);
     }, i * 75);
   }
@@ -170,10 +170,9 @@ const MAX_TOUCH_RATE = 14; // max ribbons spawned per touch per frame
 let erasing = false;
 let hinted  = false;
 
-function hueFromPosition(x, y) {
-  // Same warm sweep as the keyboard: left = rose-red, right = amber
-  // Y adds a slight shift so top/bottom of screen feel different too
-  return ((x / canvas.width) * 70 + (y / canvas.height) * 20 + 330) % 360;
+function randomWarmHue() {
+  // Random hue within the warm range: rose-red (330°) → red (0°) → amber (50°)
+  return (Math.random() * 80 + 330) % 360;
 }
 
 canvas.addEventListener('touchstart', e => {
@@ -182,7 +181,7 @@ canvas.addEventListener('touchstart', e => {
   for (const t of e.changedTouches) {
     const x   = t.clientX;
     const y   = t.clientY;
-    const hue = hueFromPosition(x, y);
+    const hue = randomWarmHue();
     activeTouches.set(t.identifier, { x, y, hue, frames: 0 });
     spawnAt(x, y, hue, 20); // initial burst, same as a keydown
   }
@@ -193,9 +192,8 @@ canvas.addEventListener('touchmove', e => {
   for (const t of e.changedTouches) {
     const touch = activeTouches.get(t.identifier);
     if (!touch) continue;
-    touch.x   = t.clientX;
-    touch.y   = t.clientY;
-    touch.hue = hueFromPosition(touch.x, touch.y);
+    touch.x = t.clientX;
+    touch.y = t.clientY;
   }
 }, { passive: false });
 
