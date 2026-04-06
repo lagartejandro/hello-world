@@ -151,6 +151,16 @@ function spawnSpace() {
   }
 }
 
+function spawnSpaceTrickle() {
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const hue = randomHue();
+  for (let i = 0; i < 5; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2.5 + Math.random() * 3.5;
+    particles.push(new Ribbon(cx, cy, hue + Math.random() * 50, angle, speed));
+  }
+}
+
 function spawnEnter() {
   for (let i = 0; i < 6; i++) {
     setTimeout(() => {
@@ -215,7 +225,17 @@ addEventListener('keydown', e => {
   if (!hinted) { hint.style.opacity = '0'; hinted = true; }
 
   if (e.key === 'Backspace') { erasing = true; return; }
-  if (e.key === ' ')         { if (!e.repeat) spawnSpace(); return; }
+  if (e.key === ' ') {
+    if (e.shiftKey) {
+      if (lockedKeys.has(' ')) lockedKeys.delete(' ');
+      else lockedKeys.add(' ');
+    } else if (lockedKeys.has(' ')) {
+      lockedKeys.delete(' ');
+    } else if (!e.repeat) {
+      spawnSpace();
+    }
+    return;
+  }
   if (e.key === 'Enter')     { if (!e.repeat) spawnEnter(); return; }
   if (e.repeat) return;
 
@@ -252,8 +272,11 @@ function animate() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // Continuous trickle from held and locked keys
-  for (const key of heldKeys)  spawnKey(key, 3);
-  for (const key of lockedKeys) spawnKey(key, 3);
+  for (const key of heldKeys)   spawnKey(key, 3);
+  for (const key of lockedKeys) {
+    if (key === ' ') spawnSpaceTrickle();
+    else spawnKey(key, 3);
+  }
 
   // Touch: ramp up spawn rate the longer a finger is held, cap at MAX_TOUCH_RATE
   for (const touch of activeTouches.values()) {
