@@ -138,6 +138,7 @@ class FractalShape {
         this.ratio    = 0.48 + Math.random() * 0.14;
         this.twist    = 0;
         this.symmetry = Math.random() < 0.6 ? 6 : (Math.random() < 0.5 ? 8 : 5);
+        this.jitter   = 0.07 + Math.random() * 0.09; // shimmer like lightning
         break;
 
       case 'lightning':
