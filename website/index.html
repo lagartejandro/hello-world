@@ -137,12 +137,12 @@ function spawnAt(x, y, hue, count = 18) {
 function spawnKey(key, count = 18) {
   const info = KEY[key.toLowerCase()];
   if (!info) return;
-  spawnAt(info.xFrac * canvas.width, info.yFrac * canvas.height, randomWarmHue(), count);
+  spawnAt(info.xFrac * canvas.width, info.yFrac * canvas.height, randomHue(), count);
 }
 
 function spawnSpace() {
   const cx = canvas.width / 2, cy = canvas.height / 2;
-  const hue = randomWarmHue();
+  const hue = randomHue();
   const n   = 70;
   for (let i = 0; i < n; i++) {
     const angle = (i / n) * Math.PI * 2;
@@ -156,23 +156,31 @@ function spawnEnter() {
     setTimeout(() => {
       const x   = canvas.width  * (0.1 + Math.random() * 0.8);
       const y   = canvas.height * (0.1 + Math.random() * 0.8);
-      const hue = randomWarmHue();
+      const hue = randomHue();
       spawnAt(x, y, hue, 24);
     }, i * 75);
   }
 }
 
 // ── Input ─────────────────────────────────────────────────────────────────────
-const heldKeys = new Set();
+const heldKeys   = new Set();
+const lockedKeys  = new Set(); // keys toggled on via Shift+key, persist until pressed again
 // Active touches: id → { x, y, hue, frames }
 const activeTouches = new Map();
 const MAX_TOUCH_RATE = 14; // max ribbons spawned per touch per frame
 let erasing = false;
 let hinted  = false;
 
-function randomWarmHue() {
-  // Random hue within the warm range: rose-red (330°) → red (0°) → amber (50°)
-  return (Math.random() * 80 + 330) % 360;
+function randomHue() {
+  // Four curated bands that look stunning with additive ('lighter') blending
+  // on a dark background — avoids yellows/greens which bloom muddy.
+  //   175–210°  electric cyan → sky blue
+  //   220–265°  indigo → violet
+  //   270–310°  deep purple → magenta
+  //   315–345°  crimson → rose
+  const bands = [[175, 210], [220, 265], [270, 310], [315, 345]];
+  const [lo, hi] = bands[Math.floor(Math.random() * bands.length)];
+  return lo + Math.random() * (hi - lo);
 }
 
 canvas.addEventListener('touchstart', e => {
@@ -181,7 +189,7 @@ canvas.addEventListener('touchstart', e => {
   for (const t of e.changedTouches) {
     const x   = t.clientX;
     const y   = t.clientY;
-    const hue = randomWarmHue();
+    const hue = randomHue();
     activeTouches.set(t.identifier, { x, y, hue, frames: 0 });
     spawnAt(x, y, hue, 20); // initial burst, same as a keydown
   }
@@ -209,9 +217,25 @@ addEventListener('keydown', e => {
   if (e.key === 'Backspace') { erasing = true; return; }
   if (e.key === ' ')         { if (!e.repeat) spawnSpace(); return; }
   if (e.key === 'Enter')     { if (!e.repeat) spawnEnter(); return; }
+  if (e.repeat) return;
 
-  if (!e.repeat) spawnKey(e.key, 20);
-  heldKeys.add(e.key.toLowerCase());
+  const k = e.key.toLowerCase();
+
+  if (e.shiftKey) {
+    // Shift+key: lock this key on (toggle if already locked)
+    if (lockedKeys.has(k)) lockedKeys.delete(k);
+    else lockedKeys.add(k);
+    return;
+  }
+
+  // No shift: pressing a locked key unlocks it; otherwise normal transient spawn
+  if (lockedKeys.has(k)) {
+    lockedKeys.delete(k);
+    return;
+  }
+
+  spawnKey(k, 20);
+  heldKeys.add(k);
 });
 
 addEventListener('keyup', e => {
@@ -227,10 +251,9 @@ function animate() {
   ctx.fillStyle = erasing ? 'rgba(11,4,2,0.28)' : 'rgba(11,4,2,0.022)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Continuous trickle from held keys
-  for (const key of heldKeys) {
-    spawnKey(key, 3);
-  }
+  // Continuous trickle from held and locked keys
+  for (const key of heldKeys)  spawnKey(key, 3);
+  for (const key of lockedKeys) spawnKey(key, 3);
 
   // Touch: ramp up spawn rate the longer a finger is held, cap at MAX_TOUCH_RATE
   for (const touch of activeTouches.values()) {
