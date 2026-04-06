@@ -37,7 +37,7 @@
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hint">press a key · touch the screen</div>
+<div id="hint">press a key · touch the screen · tab to change shape</div>
 <div id="type-label"></div>
 <script>
 const canvas    = document.getElementById('c');
@@ -66,12 +66,23 @@ ROWS.forEach(({ keys, xOff, yFrac }) => {
   });
 });
 
-// ── Fractal type — randomized on each page load ───────────────────────────────
-const FRACTAL_TYPES = ['spiral', 'snowflake', 'lightning', 'crystal', 'vine'];
-let pageType = FRACTAL_TYPES[Math.floor(Math.random() * FRACTAL_TYPES.length)];
+// ── Fractal type ──────────────────────────────────────────────────────────────
+const FRACTAL_TYPES = ['snowflake', 'spiral', 'lightning', 'crystal', 'vine'];
+const isMobile = !window.matchMedia('(pointer: fine)').matches;
+let typeIndex = 0; // snowflake first
+let pageType  = FRACTAL_TYPES[typeIndex];
 
-typeLabel.textContent = pageType;
-setTimeout(() => { typeLabel.style.opacity = '0'; }, 2800);
+function showTypeLabel() {
+  typeLabel.textContent = pageType;
+  typeLabel.style.transition = 'none';
+  typeLabel.style.opacity = '1';
+  clearTimeout(typeLabel._fadeTimer);
+  typeLabel._fadeTimer = setTimeout(() => {
+    typeLabel.style.transition = 'opacity 3s ease';
+    typeLabel.style.opacity = '0';
+  }, 1800);
+}
+showTypeLabel();
 
 // ── Colour palette ────────────────────────────────────────────────────────────
 function randomHue() {
@@ -334,6 +345,14 @@ addEventListener('keydown', e => {
   if (!hinted) { hint.style.opacity = '0'; hinted = true; }
 
   if (e.key === 'Backspace') { erasing = true; return; }
+
+  if (e.key === 'Tab' && !isMobile) {
+    e.preventDefault();
+    typeIndex = (typeIndex + (e.shiftKey ? -1 : 1) + FRACTAL_TYPES.length) % FRACTAL_TYPES.length;
+    pageType  = FRACTAL_TYPES[typeIndex];
+    showTypeLabel();
+    return;
+  }
 
   if (e.key === ' ') {
     if (e.shiftKey) {
