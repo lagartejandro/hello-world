@@ -46,95 +46,76 @@ const ROWS = [
 ];
 
 const KEY = {};
-ROWS.forEach(({ keys, xOff, yFrac }, row) => {
+ROWS.forEach(({ keys, xOff, yFrac }) => {
   [...keys].forEach((k, col) => {
-    const xFrac = xOff + col / 13;
-    // Warm sweep: left = rose-red (340°) → centre = red (0°) → right = amber (50°)
-    const hue = (xFrac * 70 + 340) % 360;
-    KEY[k] = { xFrac, yFrac, hue, row };
+    KEY[k] = { xFrac: xOff + col / 13, yFrac };
   });
 });
 
-// ── Flow ribbon particle ───────────────────────────────────────────────────────
-const particles = [];
-const TRAIL = 35;
+// ── Fractal Tree ───────────────────────────────────────────────────────────────
+const trees = [];
 
-class Ribbon {
-  constructor(x, y, hue, angle, speed) {
-    this.x     = x;
-    this.y     = y;
-    this.hue   = hue;
-    this.angle = angle  ?? Math.random() * Math.PI * 2;
-    this.speed = speed  ?? Math.random() * 2 + 0.4;
-    this.curl  = (Math.random() - 0.5) * 0.06; // direction drift per frame
-    this.width = Math.random() * 2.5 + 0.8;
-    this.life  = 1;
-    this.decay = Math.random() * 0.004 + 0.0025;
-    this.trail = [];
+class FractalTree {
+  constructor(x, y, hue, rootAngle, scale = 1) {
+    this.x        = x;
+    this.y        = y;
+    this.hue      = hue;
+    this.life     = 1;
+    this.decay    = Math.random() * 0.003 + 0.0018;
+    this.angle    = rootAngle ?? -Math.PI * 0.5 + (Math.random() - 0.5) * 0.65;
+    this.rootLen  = (Math.random() * 26 + 22) * scale;
+    this.maxDepth = 7 + Math.floor(Math.random() * 2);
+    this.spread   = 0.30 + Math.random() * 0.28;
+    this.ratio    = 0.60 + Math.random() * 0.12;
+    this.age      = 0;
+    this.growTime = 28 + Math.floor(Math.random() * 18);
+  }
+
+  get visibleDepth() {
+    return Math.min(this.maxDepth, Math.ceil((this.age / this.growTime) * (this.maxDepth + 1)));
   }
 
   update() {
-    this.trail.push({ x: this.x, y: this.y });
-    if (this.trail.length > TRAIL) this.trail.shift();
-
-    this.angle += this.curl;
-    // Tiny upward drift keeps things feeling airy
-    this.x += Math.cos(this.angle) * this.speed;
-    this.y += Math.sin(this.angle) * this.speed - 0.1;
-    this.speed *= 0.997;
-    this.life  -= this.decay;
-  }
-
-  _path(pts) {
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length - 1; i++) {
-      ctx.quadraticCurveTo(
-        pts[i].x, pts[i].y,
-        (pts[i].x + pts[i + 1].x) * 0.5,
-        (pts[i].y + pts[i + 1].y) * 0.5,
-      );
-    }
-    ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
-    ctx.stroke();
+    this.age++;
+    if (this.age > this.growTime) this.life -= this.decay;
   }
 
   draw() {
-    const pts = this.trail;
-    if (pts.length < 3) return;
-
-    // No shadowBlur — use 'lighter' composite so overlapping ribbons
-    // add up to bright hot spots naturally, at zero blur cost.
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap  = 'round';
-    ctx.lineJoin = 'round';
-
-    // Ghost tail — full length, thin, dim
-    ctx.globalAlpha = this.life * 0.11;
-    ctx.strokeStyle = `hsl(${this.hue}, 75%, 35%)`;
-    ctx.lineWidth   = this.width * 0.6;
-    this._path(pts);
-
-    // Bright head — front 40% of trail, thicker, vivid
-    const split = Math.floor(pts.length * 0.6);
-    ctx.globalAlpha = this.life * this.life * 0.5;
-    ctx.strokeStyle = `hsl(${this.hue + 15}, 85%, 52%)`;
-    ctx.lineWidth   = this.width * this.life;
-    this._path(pts.slice(split));
-
+    ctx.lineCap = 'round';
+    this._branch(this.x, this.y, this.angle, this.rootLen, 0);
     ctx.restore();
+  }
+
+  _branch(x, y, angle, len, depth) {
+    if (depth > this.visibleDepth || len < 0.5) return;
+
+    const x2  = x + Math.cos(angle) * len;
+    const y2  = y + Math.sin(angle) * len;
+    const t   = depth / this.maxDepth;          // 0 at root → 1 at tips
+
+    ctx.globalAlpha = this.life * (0.60 - t * 0.22);
+    ctx.strokeStyle = `hsl(${this.hue + t * 28}, 80%, ${28 + t * 30}%)`;
+    ctx.lineWidth   = Math.max(0.25, (1 - t * 0.88) * 2.8 * this.life);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    this._branch(x2, y2, angle - this.spread, len * this.ratio, depth + 1);
+    this._branch(x2, y2, angle + this.spread, len * this.ratio, depth + 1);
   }
 }
 
 // ── Spawn helpers ─────────────────────────────────────────────────────────────
-function spawnAt(x, y, hue, count = 18) {
+function spawnAt(x, y, hue, count = 3) {
   for (let i = 0; i < count; i++) {
-    particles.push(new Ribbon(x, y, hue + (Math.random() - 0.5) * 22));
+    trees.push(new FractalTree(x, y, hue + (Math.random() - 0.5) * 22));
   }
 }
 
-function spawnKey(key, count = 18) {
+function spawnKey(key, count = 3) {
   const info = KEY[key.toLowerCase()];
   if (!info) return;
   spawnAt(info.xFrac * canvas.width, info.yFrac * canvas.height, randomHue(), count);
@@ -143,51 +124,39 @@ function spawnKey(key, count = 18) {
 function spawnSpace() {
   const cx = canvas.width / 2, cy = canvas.height / 2;
   const hue = randomHue();
-  const n   = 70;
+  const n   = 12;
   for (let i = 0; i < n; i++) {
     const angle = (i / n) * Math.PI * 2;
-    const speed = 2.5 + Math.random() * 3.5;
-    particles.push(new Ribbon(cx, cy, hue + (i / n) * 50, angle, speed));
+    trees.push(new FractalTree(cx, cy, hue + (i / n) * 50, angle, 1.5));
   }
 }
 
 function spawnSpaceTrickle() {
   const cx = canvas.width / 2, cy = canvas.height / 2;
-  const hue = randomHue();
-  for (let i = 0; i < 5; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 2.5 + Math.random() * 3.5;
-    particles.push(new Ribbon(cx, cy, hue + Math.random() * 50, angle, speed));
-  }
+  trees.push(new FractalTree(cx, cy, randomHue() + Math.random() * 50,
+    Math.random() * Math.PI * 2, 1.2));
 }
 
 function spawnEnter() {
   for (let i = 0; i < 6; i++) {
     setTimeout(() => {
-      const x   = canvas.width  * (0.1 + Math.random() * 0.8);
-      const y   = canvas.height * (0.1 + Math.random() * 0.8);
-      const hue = randomHue();
-      spawnAt(x, y, hue, 24);
+      const x = canvas.width  * (0.1 + Math.random() * 0.8);
+      const y = canvas.height * (0.1 + Math.random() * 0.8);
+      spawnAt(x, y, randomHue(), 2);
     }, i * 75);
   }
 }
 
 // ── Input ─────────────────────────────────────────────────────────────────────
-const heldKeys   = new Set();
-const lockedKeys  = new Set(); // keys toggled on via Shift+key, persist until pressed again
-// Active touches: id → { x, y, hue, frames }
+const heldKeys      = new Set();
+const lockedKeys    = new Set();
 const activeTouches = new Map();
-const MAX_TOUCH_RATE = 14; // max ribbons spawned per touch per frame
 let erasing = false;
 let hinted  = false;
+let frame   = 0;
 
 function randomHue() {
-  // Four curated bands that look stunning with additive ('lighter') blending
-  // on a dark background — avoids yellows/greens which bloom muddy.
-  //   175–210°  electric cyan → sky blue
-  //   220–265°  indigo → violet
-  //   270–310°  deep purple → magenta
-  //   315–345°  crimson → rose
+  // Curated bands — same as the original, beautiful with additive blending
   const bands = [[175, 210], [220, 265], [270, 310], [315, 345]];
   const [lo, hi] = bands[Math.floor(Math.random() * bands.length)];
   return lo + Math.random() * (hi - lo);
@@ -197,11 +166,9 @@ canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   if (!hinted) { hint.style.opacity = '0'; hinted = true; }
   for (const t of e.changedTouches) {
-    const x   = t.clientX;
-    const y   = t.clientY;
     const hue = randomHue();
-    activeTouches.set(t.identifier, { x, y, hue, frames: 0 });
-    spawnAt(x, y, hue, 20); // initial burst, same as a keydown
+    activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY, hue, frames: 0 });
+    spawnAt(t.clientX, t.clientY, hue, 3);
   }
 }, { passive: false });
 
@@ -236,25 +203,20 @@ addEventListener('keydown', e => {
     }
     return;
   }
-  if (e.key === 'Enter')     { if (!e.repeat) spawnEnter(); return; }
+  if (e.key === 'Enter') { if (!e.repeat) spawnEnter(); return; }
   if (e.repeat) return;
 
   const k = e.key.toLowerCase();
 
   if (e.shiftKey) {
-    // Shift+key: lock this key on (toggle if already locked)
     if (lockedKeys.has(k)) lockedKeys.delete(k);
     else lockedKeys.add(k);
     return;
   }
 
-  // No shift: pressing a locked key unlocks it; otherwise normal transient spawn
-  if (lockedKeys.has(k)) {
-    lockedKeys.delete(k);
-    return;
-  }
+  if (lockedKeys.has(k)) { lockedKeys.delete(k); return; }
 
-  spawnKey(k, 20);
+  spawnKey(k, 3);
   heldKeys.add(k);
 });
 
@@ -266,32 +228,33 @@ addEventListener('keyup', e => {
 // ── Render loop ───────────────────────────────────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
+  frame++;
 
-  // Very slow fade → long painterly trails; hold Backspace to clear faster
   ctx.fillStyle = erasing ? 'rgba(11,4,2,0.28)' : 'rgba(11,4,2,0.022)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Continuous trickle from held and locked keys
-  for (const key of heldKeys)   spawnKey(key, 3);
-  for (const key of lockedKeys) {
-    if (key === ' ') spawnSpaceTrickle();
-    else spawnKey(key, 3);
+  // Throttle held/locked key spawns to one tree every 12 frames
+  if (frame % 12 === 0) {
+    for (const key of heldKeys)   spawnKey(key, 1);
+    for (const key of lockedKeys) {
+      if (key === ' ') spawnSpaceTrickle();
+      else spawnKey(key, 1);
+    }
   }
 
-  // Touch: ramp up spawn rate the longer a finger is held, cap at MAX_TOUCH_RATE
+  // Throttle touch spawns similarly
   for (const touch of activeTouches.values()) {
     touch.frames++;
-    const count = Math.min(3 + Math.floor(touch.frames / 8), MAX_TOUCH_RATE);
-    spawnAt(touch.x, touch.y, touch.hue, count);
+    if (touch.frames % 10 === 0) spawnAt(touch.x, touch.y, touch.hue, 1);
   }
 
-  for (let i = particles.length - 1; i >= 0; i--) {
-    particles[i].update();
-    particles[i].draw();
-    if (particles[i].life <= 0) particles.splice(i, 1);
+  for (let i = trees.length - 1; i >= 0; i--) {
+    trees[i].update();
+    trees[i].draw();
+    if (trees[i].life <= 0) trees.splice(i, 1);
   }
 
-  if (particles.length > 4000) particles.splice(0, particles.length - 4000);
+  if (trees.length > 200) trees.splice(0, trees.length - 200);
 }
 
 animate();
