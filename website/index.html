@@ -312,7 +312,6 @@ function spawnEnter() {
 const heldKeys      = new Set();
 const lockedKeys    = new Set();
 const activeTouches = new Map();
-let erasing = false;
 let hinted  = false;
 let frame   = 0;
 
@@ -344,8 +343,6 @@ canvas.addEventListener('touchcancel', endTouch);
 
 addEventListener('keydown', e => {
   if (!hinted) { hint.style.opacity = '0'; hinted = true; }
-
-  if (e.key === 'Backspace') { erasing = true; return; }
 
   if (e.key === 'Tab' && !isMobile) {
     e.preventDefault();
@@ -386,7 +383,6 @@ addEventListener('keydown', e => {
 
 addEventListener('keyup', e => {
   heldKeys.delete(e.key.toLowerCase());
-  if (e.key === 'Backspace') erasing = false;
 });
 
 // ── Render loop ───────────────────────────────────────────────────────────────
@@ -394,7 +390,7 @@ function animate() {
   requestAnimationFrame(animate);
   frame++;
 
-  ctx.fillStyle = erasing ? 'rgba(8,2,8,0.30)' : 'rgba(8,2,8,0.022)';
+  ctx.fillStyle = 'rgba(8,2,8,0.30)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   if (frame % 12 === 0) {
