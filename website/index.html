@@ -69,7 +69,7 @@ ROWS.forEach(({ keys, xOff, yFrac }) => {
 // ── Fractal type ──────────────────────────────────────────────────────────────
 const FRACTAL_TYPES = ['snowflake', 'spiral', 'lightning', 'crystal', 'vine'];
 const isMobile = !window.matchMedia('(pointer: fine)').matches;
-let typeIndex = 0; // snowflake first
+let typeIndex = isMobile ? FRACTAL_TYPES.indexOf('lightning') : 0;
 let pageType  = FRACTAL_TYPES[typeIndex];
 
 function showTypeLabel() {
