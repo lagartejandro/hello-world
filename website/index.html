@@ -2,420 +2,383 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>lagartejandro.com</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Lightning Run</title>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; background: #080208; overflow: hidden; }
     canvas { display: block; touch-action: none; }
-    #hint {
-      position: fixed;
-      bottom: 28px;
-      width: 100%;
-      text-align: center;
-      color: rgba(255, 180, 100, 0.18);
-      font: 12px/1 'Helvetica Neue', Helvetica, sans-serif;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      pointer-events: none;
-      transition: opacity 2s;
+    #timer {
+      position: fixed; top: 22px; left: 50%; transform: translateX(-50%);
+      color: rgba(255, 190, 110, 0.88);
+      font: 700 32px/1 'Helvetica Neue', Helvetica, sans-serif;
+      letter-spacing: 0.12em;
+      display: none;
     }
-    #type-label {
-      position: fixed;
-      top: 22px;
-      width: 100%;
+    #timer.urgent { color: rgba(255, 70, 70, 0.92); }
+    #message {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 210, 140, 0.72);
+      font: 300 14px/2.2 'Helvetica Neue', Helvetica, sans-serif;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
       text-align: center;
-      color: rgba(255, 190, 110, 0.32);
-      font: 11px/1 'Helvetica Neue', Helvetica, sans-serif;
-      letter-spacing: 0.35em;
+      pointer-events: none;
+    }
+    #hint {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+      color: rgba(120, 220, 255, 0.55);
+      font: 300 10px/1 'Helvetica Neue', Helvetica, sans-serif;
+      letter-spacing: 0.28em;
       text-transform: uppercase;
       pointer-events: none;
-      opacity: 1;
-      transition: opacity 3s ease;
+      display: none;
     }
   </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hint">press a key · touch the screen · tab to change shape</div>
-<div id="type-label"></div>
+<div id="timer"></div>
+<div id="message">touch to play</div>
+<div id="hint">memorize · swipe to navigate</div>
 <script>
-const canvas    = document.getElementById('c');
-const ctx       = canvas.getContext('2d');
-const hint      = document.getElementById('hint');
-const typeLabel = document.getElementById('type-label');
+const canvas  = document.getElementById('c');
+const ctx     = canvas.getContext('2d');
+const timerEl = document.getElementById('timer');
+const msgEl   = document.getElementById('message');
+const hintEl  = document.getElementById('hint');
 
-function resize() {
-  canvas.width  = innerWidth;
-  canvas.height = innerHeight;
-}
+let W, H;
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 resize();
 addEventListener('resize', resize);
 
-// ── Keyboard layout → normalised screen position ──────────────────────────────
-const ROWS = [
-  { keys: '`1234567890-=',  xOff: 0.00, yFrac: 0.18 },
-  { keys: 'qwertyuiop[]\\', xOff: 0.04, yFrac: 0.38 },
-  { keys: "asdfghjkl;'",    xOff: 0.07, yFrac: 0.58 },
-  { keys: 'zxcvbnm,./',     xOff: 0.11, yFrac: 0.78 },
-];
-const KEY = {};
-ROWS.forEach(({ keys, xOff, yFrac }) => {
-  [...keys].forEach((k, col) => {
-    KEY[k] = { xFrac: xOff + col / 13, yFrac };
+// ── Seeded RNG ─────────────────────────────────────────────────────────────
+function makeRng(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ── Fractal Graph ──────────────────────────────────────────────────────────
+// Builds a lightning fractal as a navigable node/edge graph.
+// World coords are centered at (0,0), scaled to fit the screen at zoom=1.
+function buildGraph(seed) {
+  const rng = makeRng(seed);
+  const spread   = 0.58 + rng() * 0.46;
+  const ratio    = 0.52 + rng() * 0.14;
+  const jitter   = 0.20 + rng() * 0.20;
+  const maxDepth = 8;
+  const rootAngle = rng() * Math.PI * 2;
+
+  const nodes = [];  // {x, y, depth, id}
+  const edges = [];  // {a, b}
+  const adj   = [];  // adj[i] = [neighborId, ...]
+
+  function branch(x, y, angle, len, depth, parentId) {
+    if (depth > maxDepth || len < 0.003) return;
+    const id = nodes.length;
+    nodes.push({ x, y, depth, id });
+    adj.push([]);
+    if (parentId >= 0) {
+      edges.push({ a: parentId, b: id });
+      adj[parentId].push(id);
+      adj[id].push(parentId);
+    }
+    const nextLen = len * ratio;
+    const twist   = (rng() - 0.5) * 0.10;
+    const j1 = (rng() - 0.5) * jitter;
+    const j2 = (rng() - 0.5) * jitter;
+    const a1 = angle - spread + j1 + twist;
+    const a2 = angle + spread + j2 + twist;
+    branch(x + Math.cos(a1) * len, y + Math.sin(a1) * len, a1, nextLen, depth + 1, id);
+    branch(x + Math.cos(a2) * len, y + Math.sin(a2) * len, a2, nextLen, depth + 1, id);
+  }
+
+  branch(0, 0, rootAngle, 1.0, 0, -1);
+
+  // Mark leaves (nodes with no children deeper than themselves)
+  nodes.forEach(n => {
+    n.isLeaf = n.depth > 0 &&
+      adj[n.id].every(nid => nodes[nid].depth <= n.depth);
   });
-});
 
-// ── Fractal type ──────────────────────────────────────────────────────────────
-const FRACTAL_TYPES = ['snowflake', 'spiral', 'lightning', 'crystal', 'vine'];
-const isMobile = !window.matchMedia('(pointer: fine)').matches;
-let typeIndex = isMobile ? FRACTAL_TYPES.indexOf('lightning') : 0;
-let pageType  = FRACTAL_TYPES[typeIndex];
-
-function showTypeLabel() {
-  typeLabel.textContent = pageType;
-  typeLabel.style.transition = 'none';
-  typeLabel.style.opacity = '1';
-  clearTimeout(typeLabel._fadeTimer);
-  typeLabel._fadeTimer = setTimeout(() => {
-    typeLabel.style.transition = 'opacity 3s ease';
-    typeLabel.style.opacity = '0';
-  }, 1800);
-}
-showTypeLabel();
-
-// ── Colour palette ────────────────────────────────────────────────────────────
-function randomHue() {
-  // Warm golds + cool blues / purples (inspired by the reference spiral image)
-  const bands = [
-    [15,  52],   // orange / amber
-    [42,  68],   // gold / yellow
-    [195, 230],  // cyan / sky
-    [225, 265],  // blue / indigo
-    [270, 315],  // purple / violet
-  ];
-  const [lo, hi] = bands[Math.floor(Math.random() * bands.length)];
-  return lo + Math.random() * (hi - lo);
-}
-
-// ── Fractal Shape ─────────────────────────────────────────────────────────────
-const shapes = [];
-
-class FractalShape {
-  constructor(x, y, hue, rootAngle, scale = 1) {
-    this.x        = x;
-    this.y        = y;
-    this.hue      = hue;
-    this.life     = 1;
-    this.decay    = Math.random() * 0.0028 + 0.0016;
-    this.age      = 0;
-    this.growTime = 30 + Math.floor(Math.random() * 22);
-    this.type     = pageType;
-    this.maxDepth = 5 + Math.floor(Math.random() * 3);
-    this.rootLen  = (20 + Math.random() * 28) * scale;
-
-    // Fully random angle — no upward bias
-    this.angle = (rootAngle !== undefined) ? rootAngle : Math.random() * Math.PI * 2;
-
-    this._initType();
+  // Scale to screen — world units become screen pixels
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    if (n.x < minX) minX = n.x; if (n.x > maxX) maxX = n.x;
+    if (n.y < minY) minY = n.y; if (n.y > maxY) maxY = n.y;
   }
+  const sc = Math.min(W * 0.82 / (maxX - minX), H * 0.82 / (maxY - minY));
+  const ox = (minX + maxX) / 2, oy = (minY + maxY) / 2;
+  for (const n of nodes) { n.x = (n.x - ox) * sc; n.y = (n.y - oy) * sc; }
 
-  _initType() {
-    switch (this.type) {
-
-      case 'spiral':
-        // Branches accumulate a twist per depth, creating nautilus-like coils
-        this.spread   = 0.38 + Math.random() * 0.28;
-        this.ratio    = 0.60 + Math.random() * 0.12;
-        this.twist    = (0.10 + Math.random() * 0.20) * (Math.random() < 0.5 ? 1 : -1);
-        this.curveDir = Math.sign(this.twist);
-        this.curve    = 0.35 + Math.random() * 0.30;
-        break;
-
-      case 'snowflake':
-        // Drawn with N-fold rotational symmetry, no twist
-        this.spread   = Math.PI / 3 + (Math.random() - 0.5) * 0.18;
-        this.ratio    = 0.48 + Math.random() * 0.14;
-        this.twist    = 0;
-        this.symmetry = Math.random() < 0.6 ? 6 : (Math.random() < 0.5 ? 8 : 5);
-        this.jitter   = 0.07 + Math.random() * 0.09; // shimmer like lightning
-        break;
-
-      case 'lightning':
-        // Wide-angle, jagged, per-segment jitter for electric feel
-        this.spread = 0.55 + Math.random() * 0.55;
-        this.ratio  = 0.50 + Math.random() * 0.16;
-        this.twist  = (Math.random() * 0.08) * (Math.random() < 0.5 ? 1 : -1);
-        this.jitter = 0.22 + Math.random() * 0.22;
-        break;
-
-      case 'crystal':
-        // Occasional 3-way splits, sharp angles, slight inward twist
-        this.spread  = Math.PI * 0.36 + Math.random() * 0.28;
-        this.ratio   = 0.55 + Math.random() * 0.13;
-        this.twist   = (Math.random() * 0.06) * (Math.random() < 0.5 ? 1 : -1);
-        this.triple  = Math.random() < 0.45; // whether this instance uses triple splits
-        break;
-
-      case 'vine':
-        // Slow-spreading with bezier curves giving a curling, tendril feel
-        this.spread   = 0.20 + Math.random() * 0.20;
-        this.ratio    = 0.68 + Math.random() * 0.10;
-        this.twist    = (0.05 + Math.random() * 0.16) * (Math.random() < 0.5 ? 1 : -1);
-        this.curveDir = Math.sign(this.twist) || 1;
-        this.curve    = 0.30 + Math.random() * 0.35;
-        break;
+  // Pick start & flag: leaf nodes near screen edges, maximally far apart
+  const leaves = nodes.filter(n => n.isLeaf);
+  const eW = W * 0.36, eH = H * 0.36;
+  leaves.sort((a, b) => {
+    const sa = -(Math.abs(Math.abs(a.x) - eW) + Math.abs(Math.abs(a.y) - eH));
+    const sb = -(Math.abs(Math.abs(b.x) - eW) + Math.abs(Math.abs(b.y) - eH));
+    return sb - sa;
+  });
+  const pool = leaves.slice(0, Math.max(6, Math.floor(leaves.length * 0.25)));
+  let start = pool[0], flag = pool[1], best = 0;
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = i + 1; j < pool.length; j++) {
+      const dx = pool[i].x - pool[j].x, dy = pool[i].y - pool[j].y;
+      const d  = dx * dx + dy * dy;
+      if (d > best) { best = d; start = pool[i]; flag = pool[j]; }
     }
   }
 
-  get visibleDepth() {
-    return Math.min(
-      this.maxDepth,
-      Math.ceil((this.age / this.growTime) * (this.maxDepth + 1))
-    );
-  }
+  return { nodes, edges, adj, maxDepth, start, flag };
+}
 
-  update() {
-    this.age++;
-    if (this.age > this.growTime) this.life -= this.decay;
-  }
+// ── State ──────────────────────────────────────────────────────────────────
+let state  = 'idle'; // idle | reveal | playing | won | lost
+let graph  = null;
+let player = null;
+let flag   = null;
+let timeLeft = 60;
+let timerInt = null, revealTmo = null;
+let tick = 0;
 
-  draw() {
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap  = 'round';
-    ctx.lineJoin = 'round';
+// Camera: world → screen via  sx(wx) = W/2 + (wx-camX)*camZ
+let camX = 0, camY = 0, camZ = 1;
+let tX   = 0, tY   = 0, tZ   = 1;
+const ZOOM = 4.4;
 
-    if (this.type === 'snowflake') {
-      const sym = this.symmetry || 6;
-      for (let i = 0; i < sym; i++) {
-        const a = this.angle + (i / sym) * Math.PI * 2;
-        this._branch(this.x, this.y, a, this.rootLen, 0);
-      }
-    } else {
-      this._branch(this.x, this.y, this.angle, this.rootLen, 0);
+const sx = wx => W / 2 + (wx - camX) * camZ;
+const sy = wy => H / 2 + (wy - camY) * camZ;
+
+function setCamera(x, y, z) { tX = x; tY = y; tZ = z; }
+
+function lerpCam() {
+  const s = 0.072;
+  camX += (tX - camX) * s;
+  camY += (tY - camY) * s;
+  camZ += (tZ - camZ) * s;
+}
+
+// ── Drawing ────────────────────────────────────────────────────────────────
+function drawEdges(boosted) {
+  if (!graph) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  const pX = player ? player.x : 0, pY = player ? player.y : 0;
+  const visible = (W / 2) / camZ; // world-unit half-width of screen
+
+  for (const e of graph.edges) {
+    const a = graph.nodes[e.a], b = graph.nodes[e.b];
+    const depth = Math.max(a.depth, b.depth);
+    const t   = depth / graph.maxDepth;
+    const hue = 195 + t * 72;
+    const lum = 15 + t * 46;
+    const lw  = Math.max(0.25, (1 - t * 0.86) * 2.8);
+    let al = 0.60 - t * 0.27;
+    if (boosted) {
+      const midX = (a.x + b.x) * 0.5, midY = (a.y + b.y) * 0.5;
+      const d = Math.sqrt((midX - pX) ** 2 + (midY - pY) ** 2);
+      al = Math.min(0.95, al * (1 + Math.max(0, 1 - d / (visible * 1.6)) * 1.3));
     }
-
-    ctx.restore();
-  }
-
-  _branch(x, y, angle, len, depth) {
-    if (depth > this.visibleDepth || len < 0.45) return;
-
-    const t   = depth / this.maxDepth;
-    const alp = this.life * (0.68 - t * 0.30);
-    const lw  = Math.max(0.18, (1 - t * 0.88) * 3.0 * this.life);
-
-    ctx.globalAlpha = alp;
-    ctx.strokeStyle = `hsl(${this.hue + t * 50}, 88%, ${16 + t * 46}%)`;
+    ctx.globalAlpha = al;
+    ctx.strokeStyle = `hsl(${hue},88%,${lum}%)`;
     ctx.lineWidth   = lw;
+    ctx.beginPath();
+    ctx.moveTo(sx(a.x), sy(a.y));
+    ctx.lineTo(sx(b.x), sy(b.y));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
-    // Accumulate twist each level
-    const tAngle = angle + (this.twist || 0) * depth;
+function drawFlag() {
+  if (!flag) return;
+  const x = sx(flag.x), y = sy(flag.y);
+  const p = 0.70 + 0.30 * Math.sin(tick * 0.07 + 1.2);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 28 * p);
+  g.addColorStop(0,    'rgba(255,225,80,.95)');
+  g.addColorStop(0.38, 'rgba(255,140,30,.42)');
+  g.addColorStop(1,    'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, 28 * p, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 0.92;
+  ctx.strokeStyle = 'rgba(255,210,65,.95)';
+  ctx.lineWidth   = 1.8;
+  ctx.beginPath(); ctx.moveTo(x, y + 10); ctx.lineTo(x, y - 12); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,210,65,.95)';
+  ctx.beginPath();
+  ctx.moveTo(x, y - 12); ctx.lineTo(x + 10, y - 6); ctx.lineTo(x, y); ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
 
-    let x2, y2;
+function drawPlayer() {
+  if (!player) return;
+  const x = sx(player.x), y = sy(player.y);
+  const p = 0.72 + 0.28 * Math.sin(tick * 0.09);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 22 * p);
+  g.addColorStop(0,    'rgba(140,230,255,.95)');
+  g.addColorStop(0.38, 'rgba(70,170,255,.42)');
+  g.addColorStop(1,    'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(x, y, 22 * p, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(215,248,255,.98)';
+  ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
 
-    if (this.type === 'spiral') {
-      // Bezier curve that winds in the twist direction
-      x2 = x + Math.cos(tAngle) * len;
-      y2 = y + Math.sin(tAngle) * len;
-      const cpA = angle + (this.twist || 0) * depth * 0.5 + this.curveDir * this.curve;
-      const cpx = x + Math.cos(cpA) * len * 0.72;
-      const cpy = y + Math.sin(cpA) * len * 0.72;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(cpx, cpy, x2, y2);
-      ctx.stroke();
+function drawRevealStart() {
+  if (!player) return;
+  const x = sx(player.x), y = sy(player.y);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = 'rgba(100,255,190,.88)';
+  ctx.lineWidth   = 2.2;
+  ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 0.68;
+  ctx.fillStyle   = 'rgba(100,255,190,1)';
+  ctx.font        = '9px Helvetica Neue, sans-serif';
+  ctx.textAlign   = 'center';
+  ctx.fillText('YOU', x, y + 24);
+  ctx.restore();
+}
 
-    } else if (this.type === 'vine') {
-      // Gentle curling bezier
-      x2 = x + Math.cos(tAngle) * len;
-      y2 = y + Math.sin(tAngle) * len;
-      const cpA = tAngle + this.curveDir * this.curve * 0.6;
-      const cpx = x + Math.cos(cpA) * len * 0.68;
-      const cpy = y + Math.sin(cpA) * len * 0.68;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(cpx, cpy, x2, y2);
-      ctx.stroke();
-
-    } else {
-      // Straight segment (lightning adds per-segment jitter)
-      const jitter = this.jitter ? (Math.random() - 0.5) * this.jitter : 0;
-      const fAngle = tAngle + jitter;
-      x2 = x + Math.cos(fAngle) * len;
-      y2 = y + Math.sin(fAngle) * len;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
+// ── Movement ───────────────────────────────────────────────────────────────
+function move(dx, dy) {
+  if (state !== 'playing' || !player) return;
+  const angle = Math.atan2(dy, dx);
+  let best = null, bestScore = -Infinity;
+  for (const nid of graph.adj[player.id]) {
+    const n  = graph.nodes[nid];
+    const na = Math.atan2(n.y - player.y, n.x - player.x);
+    let diff = na - angle;
+    while (diff >  Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const score = -Math.abs(diff);
+    if (score > bestScore) { bestScore = score; best = n; }
+  }
+  if (best && bestScore > -Math.PI / 2) {
+    player = best;
+    setCamera(player.x, player.y, ZOOM);
+    if (player.id === flag.id) {
+      clearInterval(timerInt);
+      state = 'won';
+      timerEl.style.display = 'none';
+      msgEl.textContent   = 'you found it';
+      msgEl.style.display = 'block';
+      setTimeout(reset, 3500);
     }
-
-    const nextLen = len * this.ratio;
-
-    if (this.type === 'crystal' && this.triple && depth % 2 === 0) {
-      // Triple split on even depths
-      this._branch(x2, y2, tAngle - this.spread, nextLen,          depth + 1);
-      this._branch(x2, y2, tAngle,               nextLen * 0.72,   depth + 1);
-      this._branch(x2, y2, tAngle + this.spread, nextLen,          depth + 1);
-    } else {
-      this._branch(x2, y2, tAngle - this.spread, nextLen, depth + 1);
-      this._branch(x2, y2, tAngle + this.spread, nextLen, depth + 1);
-    }
   }
 }
 
-// ── Spawn helpers ─────────────────────────────────────────────────────────────
-function spawnAt(x, y, hue, count = 3) {
-  for (let i = 0; i < count; i++) {
-    shapes.push(new FractalShape(x, y, hue + (Math.random() - 0.5) * 24));
-  }
+// ── Game Flow ──────────────────────────────────────────────────────────────
+function start() {
+  if (state !== 'idle') return;
+  graph  = buildGraph(Date.now() & 0xFFFFFF);
+  player = graph.start;
+  flag   = graph.flag;
+  camX = 0; camY = 0; camZ = 1;
+  setCamera(0, 0, 1);
+  state = 'reveal';
+  msgEl.style.display  = 'none';
+  hintEl.style.display = 'block';
+  timerEl.style.display = 'none';
+
+  revealTmo = setTimeout(() => {
+    hintEl.style.display = 'none';
+    state    = 'playing';
+    timeLeft = 60;
+    timerEl.textContent   = timeLeft;
+    timerEl.style.display = 'block';
+    timerEl.classList.remove('urgent');
+    setCamera(player.x, player.y, ZOOM);
+
+    timerInt = setInterval(() => {
+      timeLeft--;
+      timerEl.textContent = timeLeft;
+      if (timeLeft <= 10) timerEl.classList.add('urgent');
+      if (timeLeft <= 0) {
+        clearInterval(timerInt);
+        state = 'lost';
+        timerEl.style.display = 'none';
+        msgEl.textContent   = "time's up";
+        msgEl.style.display = 'block';
+        setTimeout(reset, 3000);
+      }
+    }, 1000);
+  }, 1600);
 }
 
-function spawnKey(key, count = 3) {
-  const info = KEY[key.toLowerCase()];
-  if (!info) return;
-  spawnAt(info.xFrac * canvas.width, info.yFrac * canvas.height, randomHue(), count);
+function reset() {
+  clearInterval(timerInt); clearTimeout(revealTmo);
+  graph = null; player = null; flag = null;
+  state = 'idle';
+  msgEl.textContent     = 'touch to play';
+  msgEl.style.display   = 'block';
+  timerEl.style.display = 'none';
+  hintEl.style.display  = 'none';
+  camX = 0; camY = 0; camZ = 1;
+  setCamera(0, 0, 1);
 }
 
-function spawnSpace() {
-  const cx = canvas.width / 2, cy = canvas.height / 2;
-  const hue = randomHue();
-  const n   = 10;
-  for (let i = 0; i < n; i++) {
-    const angle = (i / n) * Math.PI * 2;
-    shapes.push(new FractalShape(cx, cy, hue + (i / n) * 55, angle, 1.5));
-  }
-}
-
-function spawnSpaceTrickle() {
-  const cx = canvas.width / 2, cy = canvas.height / 2;
-  shapes.push(new FractalShape(
-    cx, cy,
-    randomHue() + Math.random() * 55,
-    Math.random() * Math.PI * 2,
-    1.2
-  ));
-}
-
-function spawnEnter() {
-  for (let i = 0; i < 6; i++) {
-    setTimeout(() => {
-      const x = canvas.width  * (0.1 + Math.random() * 0.8);
-      const y = canvas.height * (0.1 + Math.random() * 0.8);
-      spawnAt(x, y, randomHue(), 2);
-    }, i * 75);
-  }
-}
-
-// ── Input ─────────────────────────────────────────────────────────────────────
-const heldKeys      = new Set();
-const lockedKeys    = new Set();
-const activeTouches = new Map();
-let hinted  = false;
-let frame   = 0;
+// ── Input ──────────────────────────────────────────────────────────────────
+let touchOrigin = null, mouseOrigin = null;
 
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
-  if (!hinted) { hint.style.opacity = '0'; hinted = true; }
-  for (const t of e.changedTouches) {
-    const hue = randomHue();
-    activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY, hue, frames: 0 });
-    spawnAt(t.clientX, t.clientY, hue, 3);
-  }
+  if (state === 'idle') { start(); return; }
+  const t = e.changedTouches[0];
+  touchOrigin = { x: t.clientX, y: t.clientY };
 }, { passive: false });
 
-canvas.addEventListener('touchmove', e => {
+canvas.addEventListener('touchend', e => {
   e.preventDefault();
-  for (const t of e.changedTouches) {
-    const touch = activeTouches.get(t.identifier);
-    if (!touch) continue;
-    touch.x = t.clientX;
-    touch.y = t.clientY;
-  }
+  if (!touchOrigin) return;
+  const t  = e.changedTouches[0];
+  const dx = t.clientX - touchOrigin.x, dy = t.clientY - touchOrigin.y;
+  if (Math.sqrt(dx * dx + dy * dy) > 18) move(dx, dy);
+  touchOrigin = null;
 }, { passive: false });
 
-function endTouch(e) {
-  for (const t of e.changedTouches) activeTouches.delete(t.identifier);
-}
-canvas.addEventListener('touchend',    endTouch);
-canvas.addEventListener('touchcancel', endTouch);
-
-addEventListener('keydown', e => {
-  if (!hinted) { hint.style.opacity = '0'; hinted = true; }
-
-  if (e.key === 'Tab' && !isMobile) {
-    e.preventDefault();
-    typeIndex = (typeIndex + (e.shiftKey ? -1 : 1) + FRACTAL_TYPES.length) % FRACTAL_TYPES.length;
-    pageType  = FRACTAL_TYPES[typeIndex];
-    showTypeLabel();
-    return;
-  }
-
-  if (e.key === ' ') {
-    if (e.shiftKey) {
-      if (lockedKeys.has(' ')) lockedKeys.delete(' ');
-      else lockedKeys.add(' ');
-    } else if (lockedKeys.has(' ')) {
-      lockedKeys.delete(' ');
-    } else if (!e.repeat) {
-      spawnSpace();
-    }
-    return;
-  }
-
-  if (e.key === 'Enter') { if (!e.repeat) spawnEnter(); return; }
-  if (e.repeat) return;
-
-  const k = e.key.toLowerCase();
-
-  if (e.shiftKey) {
-    if (lockedKeys.has(k)) lockedKeys.delete(k);
-    else lockedKeys.add(k);
-    return;
-  }
-
-  if (lockedKeys.has(k)) { lockedKeys.delete(k); return; }
-
-  spawnKey(k, 3);
-  heldKeys.add(k);
+canvas.addEventListener('mousedown', e => {
+  if (state === 'idle') { start(); return; }
+  mouseOrigin = { x: e.clientX, y: e.clientY };
+});
+canvas.addEventListener('mouseup', e => {
+  if (!mouseOrigin) return;
+  const dx = e.clientX - mouseOrigin.x, dy = e.clientY - mouseOrigin.y;
+  if (Math.sqrt(dx * dx + dy * dy) > 12) move(dx, dy);
+  mouseOrigin = null;
 });
 
-addEventListener('keyup', e => {
-  heldKeys.delete(e.key.toLowerCase());
-});
-
-// ── Render loop ───────────────────────────────────────────────────────────────
-function animate() {
-  requestAnimationFrame(animate);
-  frame++;
-
-  ctx.fillStyle = 'rgba(8,2,8,0.30)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  if (frame % 12 === 0) {
-    for (const key of heldKeys)   spawnKey(key, 1);
-    for (const key of lockedKeys) {
-      if (key === ' ') spawnSpaceTrickle();
-      else spawnKey(key, 1);
-    }
-  }
-
-  for (const touch of activeTouches.values()) {
-    touch.frames++;
-    if (touch.frames % 10 === 0) spawnAt(touch.x, touch.y, touch.hue, 1);
-  }
-
-  for (let i = shapes.length - 1; i >= 0; i--) {
-    shapes[i].update();
-    shapes[i].draw();
-    if (shapes[i].life <= 0) shapes.splice(i, 1);
-  }
-
-  if (shapes.length > 220) shapes.splice(0, shapes.length - 220);
+// ── Render Loop ────────────────────────────────────────────────────────────
+function loop() {
+  requestAnimationFrame(loop);
+  tick++;
+  ctx.fillStyle = 'rgba(8,2,8,0.36)';
+  ctx.fillRect(0, 0, W, H);
+  lerpCam();
+  if (state === 'idle') return;
+  const inPlay = state === 'playing' || state === 'won' || state === 'lost';
+  drawEdges(inPlay);
+  drawFlag();
+  if (state === 'reveal') drawRevealStart();
+  else drawPlayer();
 }
 
-animate();
+loop();
 </script>
 </body>
 </html>
