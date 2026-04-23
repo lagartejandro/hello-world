@@ -73,7 +73,7 @@ function buildGraph(seed) {
   const spread   = 0.58 + rng() * 0.46;
   const ratio    = 0.52 + rng() * 0.14;
   const jitter   = 0.20 + rng() * 0.20;
-  const maxDepth = 8;
+  const maxDepth = 11;
   const rootAngle = rng() * Math.PI * 2;
 
   const nodes = [];  // {x, y, depth, id}
@@ -151,7 +151,7 @@ let tick = 0;
 // Camera: world → screen via  sx(wx) = W/2 + (wx-camX)*camZ
 let camX = 0, camY = 0, camZ = 1;
 let tX   = 0, tY   = 0, tZ   = 1;
-const ZOOM = 4.4;
+const ZOOM = 7.5;
 
 const sx = wx => W / 2 + (wx - camX) * camZ;
 const sy = wy => H / 2 + (wy - camY) * camZ;
