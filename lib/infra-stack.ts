@@ -52,10 +52,31 @@ export class InfraStack extends cdk.Stack {
     // -------------------------------------------------------------------------
     // CloudFront Distribution
     // -------------------------------------------------------------------------
+    const urlRewrite = new cloudfront.Function(this, 'UrlRewrite', {
+      code: cloudfront.FunctionCode.fromInline(`
+function handler(event) {
+  var uri = event.request.uri;
+  if (uri === '/map' || uri === '/map/') {
+    event.request.uri = '/map.html';
+  } else if (uri === '/diet-stack' || uri === '/diet-stack/') {
+    event.request.uri = '/diet-stack.html';
+  } else if (uri === '/brew' || uri === '/brew/') {
+    event.request.uri = '/brew.html';
+  }
+  return event.request;
+}
+      `),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+    });
+
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        functionAssociations: [{
+          function: urlRewrite,
+          eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+        }],
       },
       domainNames: [domainName, `www.${domainName}`],
       certificate: this.certificate,

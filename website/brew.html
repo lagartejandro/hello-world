@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brew Log</title>
+<meta name="description" content="Batch brewing log — track leaf ratio, temperature, steep time, and how a batch holds over a full day.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --surface-raised: #f4f3f1;
+    --text: #18181b;
+    --text-muted: #71717a;
+    --text-faint: #a1a1aa;
+    --border: rgba(0,0,0,0.08);
+    --border-strong: rgba(0,0,0,0.14);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05);
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-xs: 4px;
+
+    --accent: #b45309;
+    --accent-soft: rgba(180,83,9,0.10);
+    --good: #16a34a;
+    --warn: #d97706;
+    --bad: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #18181b;
+      --surface: #27272a;
+      --surface-raised: #2f2f33;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+      --text-faint: #71717a;
+      --border: rgba(255,255,255,0.08);
+      --border-strong: rgba(255,255,255,0.14);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.2);
+      --accent: #f59e0b;
+      --accent-soft: rgba(245,158,11,0.12);
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  .page { max-width: 720px; margin: 0 auto; padding: 48px 20px 80px; }
+
+  .header { margin-bottom: 28px; }
+  .header h1 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 6px; }
+  .header p { color: var(--text-muted); font-size: 0.925rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .card h2 {
+    font-size: 0.8rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 16px;
+  }
+
+  /* ── Timer ── */
+  .timer { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .timer-display {
+    font-size: 2rem; font-weight: 600; font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em; min-width: 120px;
+  }
+  .timer.running .timer-display { color: var(--accent); }
+
+  /* ── Forms ── */
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 560px) {
+    .grid, .grid-3 { grid-template-columns: 1fr 1fr; }
+    .page { padding: 28px 16px 60px; }
+  }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field.full { grid-column: 1 / -1; }
+  label {
+    font-size: 0.75rem; font-weight: 500; color: var(--text-muted);
+    letter-spacing: 0.01em;
+  }
+  input, select, textarea {
+    font-family: inherit; font-size: 0.925rem; color: var(--text);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 11px; width: 100%;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  textarea { resize: vertical; min-height: 62px; line-height: 1.5; }
+
+  .hint { font-size: 0.75rem; color: var(--text-faint); }
+
+  button {
+    font-family: inherit; font-size: 0.875rem; font-weight: 500;
+    border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+    background: var(--surface-raised); color: var(--text);
+    padding: 9px 16px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  button.primary:hover { opacity: 0.88; color: #fff; }
+  button.ghost { border-color: transparent; background: transparent; color: var(--text-muted); padding: 6px 10px; }
+  button.ghost:hover { color: var(--accent); }
+
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .row.end { justify-content: flex-end; }
+  .spacer { flex: 1; }
+
+  /* ── Ratio readout ── */
+  .readout {
+    background: var(--accent-soft);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    display: flex; gap: 22px; flex-wrap: wrap;
+    font-size: 0.875rem;
+  }
+  .readout b { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .readout span { color: var(--text-muted); }
+
+  /* ── Entries ── */
+  .entry {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .entry-head {
+    padding: 14px 18px; cursor: pointer;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .entry-head:hover { background: var(--surface-raised); }
+  .entry-title { font-weight: 500; font-size: 0.95rem; }
+  .entry-sub { font-size: 0.78rem; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  .score {
+    font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.875rem;
+    padding: 2px 9px; border-radius: 999px; background: var(--surface-raised);
+  }
+  .score.hi { color: var(--good); }
+  .score.mid { color: var(--warn); }
+  .score.lo { color: var(--bad); }
+
+  .entry-body { padding: 0 18px 18px; border-top: 1px solid var(--border); padding-top: 16px; }
+  .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .kv div { font-size: 0.85rem; }
+  .kv dt { font-size: 0.72rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em; }
+  .kv dd { font-variant-numeric: tabular-nums; }
+  .notes { font-size: 0.875rem; color: var(--text-muted); white-space: pre-wrap; margin-bottom: 14px; }
+
+  .checkpoints { margin-bottom: 14px; }
+  .cp {
+    display: flex; gap: 12px; align-items: baseline;
+    font-size: 0.83rem; padding: 7px 0;
+    border-top: 1px dashed var(--border);
+  }
+  .cp-h { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 46px; color: var(--accent); }
+  .cp-note { color: var(--text-muted); }
+
+  .badge {
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 3px 8px; border-radius: var(--radius-xs);
+  }
+  .badge.keep { background: rgba(22,163,74,0.12); color: var(--good); }
+  .badge.tweak { background: rgba(217,119,6,0.12); color: var(--warn); }
+  .badge.discard { background: rgba(220,38,38,0.12); color: var(--bad); }
+
+  .empty { text-align: center; color: var(--text-faint); padding: 40px 20px; font-size: 0.9rem; }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--text); color: var(--bg);
+    padding: 10px 20px; border-radius: 999px; font-size: 0.875rem;
+    box-shadow: var(--shadow-md); opacity: 0; pointer-events: none;
+    transition: transform .22s ease, opacity .22s ease;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>Brew Log</h1>
+    <p>Ratio, temperature, time — and how the batch holds over a full day.</p>
+  </div>
+
+  <!-- ── Timer ── -->
+  <div class="card">
+    <h2>Steep timer</h2>
+    <div class="timer" id="timer">
+      <div class="timer-display" id="timerDisplay">0:00</div>
+      <button id="timerToggle" class="primary">Start</button>
+      <button id="timerReset" class="ghost">Reset</button>
+      <div class="spacer"></div>
+      <button id="timerUse" class="ghost">Use as steep time &darr;</button>
+    </div>
+  </div>
+
+  <!-- ── New batch ── -->
+  <div class="card">
+    <h2>New batch</h2>
+    <form id="batchForm">
+      <div class="grid">
+        <div class="field full">
+          <label for="blend">Blend</label>
+          <input id="blend" required placeholder="what went in — leaf, peel, additions, proportions">
+        </div>
+
+        <div class="field">
+          <label for="leafG">Leaf (g)</label>
+          <input id="leafG" type="number" step="0.1" min="0" required inputmode="decimal">
+        </div>
+        <div class="field">
+          <label for="waterMl">Water (ml)</label>
+          <input id="waterMl" type="number" step="10" min="0" required inputmode="numeric">
+        </div>
+
+        <div class="field">
+          <label for="tempC">Water temp (&deg;C)</label>
+          <input id="tempC" type="number" step="1" min="0" max="100" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="steepSec">Steep (mm:ss)</label>
+          <input id="steepSec" placeholder="4:30" inputmode="text">
+        </div>
+
+        <div class="field">
+          <label for="method">Method</label>
+          <select id="method">
+            <option>Hot steep</option>
+            <option>Cold brew</option>
+            <option>Flash / short contact</option>
+            <option>Multiple infusions blended</option>
+            <option>Simmered / decocted</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="vessel">Vessel</label>
+          <input id="vessel" placeholder="urn, cambro, gaiwan...">
+        </div>
+      </div>
+
+      <div style="height:14px"></div>
+      <div class="readout" id="readout">
+        <div><span>Ratio</span> <b id="rRatio">&mdash;</b></div>
+        <div><span>Yield</span> <b id="rYield">&mdash;</b></div>
+        <div><span>Per 250ml cup</span> <b id="rCup">&mdash;</b></div>
+      </div>
+      <div style="height:16px"></div>
+
+      <div class="grid-3">
+        <div class="field">
+          <label for="sTaste">Taste (1&ndash;10)</label>
+          <input id="sTaste" type="number" min="1" max="10" step="1" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="sKick">Caffeine kick (1&ndash;10)</label>
+          <input id="sKick" type="number" min="1" max="10" step="1" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="sBitter">Astringency (1&ndash;10)</label>
+          <input id="sBitter" type="number" min="1" max="10" step="1" inputmode="numeric">
+        </div>
+      </div>
+
+      <div style="height:12px"></div>
+      <div class="field">
+        <label for="notes">Tasting notes at pour</label>
+        <textarea id="notes" placeholder="aroma, body, finish, what you'd change"></textarea>
+      </div>
+
+      <div style="height:12px"></div>
+      <div class="row">
+        <div class="field" style="flex:0 0 150px">
+          <label for="verdict">Verdict</label>
+          <select id="verdict">
+            <option value="tweak">Tweak</option>
+            <option value="keep">Keep</option>
+            <option value="discard">Discard</option>
+          </select>
+        </div>
+        <div class="spacer"></div>
+        <button type="submit" class="primary">Save batch</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Log ── -->
+  <div class="toolbar">
+    <h2 style="font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin:0">
+      Log (<span id="count">0</span>)
+    </h2>
+    <div class="spacer"></div>
+    <select id="sortBy" style="width:auto;font-size:0.8rem;padding:6px 10px">
+      <option value="date">Newest first</option>
+      <option value="taste">Best tasting</option>
+      <option value="kick">Strongest kick</option>
+      <option value="ratio">Highest ratio</option>
+    </select>
+    <button class="ghost" id="exportCsv">CSV</button>
+    <button class="ghost" id="exportJson">JSON</button>
+    <button class="ghost" id="importBtn">Import</button>
+    <input type="file" id="importFile" accept="application/json" class="hidden">
+  </div>
+
+  <div id="log"></div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+const KEY = 'brewlog.v1';
+const $ = id => document.getElementById(id);
+
+let batches = load();
+let openId = null;
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+  catch { return []; }
+}
+function save() {
+  localStorage.setItem(KEY, JSON.stringify(batches));
+}
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 1900);
+}
+
+/* ── Time helpers ── */
+function parseMMSS(str) {
+  if (!str) return null;
+  str = String(str).trim();
+  if (/^\d+$/.test(str)) return parseInt(str, 10) * 60;   // bare number = minutes
+  const m = str.match(/^(\d+):([0-5]?\d)$/);
+  return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+}
+function fmtMMSS(sec) {
+  if (sec == null) return '—';
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+/* ── Steep timer ── */
+let tStart = null, tElapsed = 0, tTick = null;
+
+function timerRender() {
+  const sec = Math.floor((tElapsed + (tStart ? Date.now() - tStart : 0)) / 1000);
+  $('timerDisplay').textContent = fmtMMSS(sec);
+  $('timer').classList.toggle('running', !!tStart);
+  $('timerToggle').textContent = tStart ? 'Stop' : 'Start';
+}
+$('timerToggle').addEventListener('click', () => {
+  if (tStart) {
+    tElapsed += Date.now() - tStart;
+    tStart = null;
+    clearInterval(tTick);
+  } else {
+    tStart = Date.now();
+    tTick = setInterval(timerRender, 250);
+  }
+  timerRender();
+});
+$('timerReset').addEventListener('click', () => {
+  tStart = null; tElapsed = 0; clearInterval(tTick); timerRender();
+});
+$('timerUse').addEventListener('click', () => {
+  const sec = Math.floor((tElapsed + (tStart ? Date.now() - tStart : 0)) / 1000);
+  $('steepSec').value = fmtMMSS(sec);
+  showToast('Steep time set to ' + fmtMMSS(sec));
+});
+timerRender();
+
+/* ── Live ratio readout ── */
+function ratioOf(b) {
+  return (b.leafG && b.waterMl) ? (b.leafG / (b.waterMl / 1000)) : null;
+}
+function updateReadout() {
+  const leafG = parseFloat($('leafG').value);
+  const waterMl = parseFloat($('waterMl').value);
+  if (leafG > 0 && waterMl > 0) {
+    const r = leafG / (waterMl / 1000);
+    $('rRatio').textContent = r.toFixed(1) + ' g/L';
+    $('rYield').textContent = (waterMl / 250).toFixed(1) + ' cups';
+    $('rCup').textContent = (leafG / (waterMl / 250)).toFixed(2) + ' g';
+  } else {
+    $('rRatio').textContent = $('rYield').textContent = $('rCup').textContent = '—';
+  }
+}
+['leafG', 'waterMl'].forEach(id => $(id).addEventListener('input', updateReadout));
+
+/* ── Save a batch ── */
+$('batchForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const num = id => { const v = parseFloat($(id).value); return isNaN(v) ? null : v; };
+
+  batches.unshift({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    created: new Date().toISOString(),
+    blend: $('blend').value.trim(),
+    leafG: num('leafG'),
+    waterMl: num('waterMl'),
+    tempC: num('tempC'),
+    steepSec: parseMMSS($('steepSec').value),
+    method: $('method').value,
+    vessel: $('vessel').value.trim(),
+    scores: { taste: num('sTaste'), kick: num('sKick'), bitter: num('sBitter') },
+    notes: $('notes').value.trim(),
+    verdict: $('verdict').value,
+    checkpoints: []
+  });
+
+  save();
+  render();
+
+  // Keep blend/vessel/method — you usually iterate on one variable at a time.
+  ['leafG', 'waterMl', 'tempC', 'steepSec', 'sTaste', 'sKick', 'sBitter', 'notes']
+    .forEach(id => $(id).value = '');
+  updateReadout();
+  showToast('Batch saved');
+});
+
+/* ── Rendering ── */
+function scoreClass(n) {
+  if (n == null) return '';
+  return n >= 7 ? 'hi' : n >= 4 ? 'mid' : 'lo';
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]
+  ));
+}
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
+    ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function sortBatches() {
+  const mode = $('sortBy').value;
+  const arr = batches.slice();
+  if (mode === 'date') return arr.sort((a, b) => b.created.localeCompare(a.created));
+  if (mode === 'ratio') return arr.sort((a, b) => (ratioOf(b) || 0) - (ratioOf(a) || 0));
+  return arr.sort((a, b) => (b.scores[mode] || 0) - (a.scores[mode] || 0));
+}
+
+function render() {
+  $('count').textContent = batches.length;
+  const log = $('log');
+
+  if (!batches.length) {
+    log.innerHTML = '<div class="empty">No batches yet. The first thirty are the ones that teach you the most &mdash; log them all, including the bad ones.</div>';
+    return;
+  }
+
+  log.innerHTML = sortBatches().map(b => {
+    const r = ratioOf(b);
+    const open = b.id === openId;
+
+    const cps = b.checkpoints.map(c => `
+      <div class="cp">
+        <div class="cp-h">+${esc(c.hours)}h</div>
+        <div>
+          <b>${c.taste == null ? '—' : esc(c.taste)}</b>/10 taste
+          &middot; <b>${c.bitter == null ? '—' : esc(c.bitter)}</b>/10 astringency
+          ${c.note ? '<div class="cp-note">' + esc(c.note) + '</div>' : ''}
+        </div>
+      </div>`).join('');
+
+    return `
+    <div class="entry">
+      <div class="entry-head" data-toggle="${b.id}">
+        <div style="flex:1;min-width:0">
+          <div class="entry-title">${esc(b.blend) || 'Untitled batch'}</div>
+          <div class="entry-sub">
+            ${fmtDate(b.created)}
+            ${r ? ' &middot; ' + r.toFixed(1) + ' g/L' : ''}
+            ${b.tempC != null ? ' &middot; ' + b.tempC + '&deg;C' : ''}
+            ${b.steepSec != null ? ' &middot; ' + fmtMMSS(b.steepSec) : ''}
+          </div>
+        </div>
+        <span class="badge ${b.verdict}">${esc(b.verdict)}</span>
+        <span class="score ${scoreClass(b.scores.taste)}">${b.scores.taste == null ? '—' : b.scores.taste}</span>
+      </div>
+
+      <div class="entry-body ${open ? '' : 'hidden'}">
+        <dl class="kv">
+          <div><dt>Leaf</dt><dd>${b.leafG == null ? '—' : b.leafG + ' g'}</dd></div>
+          <div><dt>Water</dt><dd>${b.waterMl == null ? '—' : b.waterMl + ' ml'}</dd></div>
+          <div><dt>Ratio</dt><dd>${r ? r.toFixed(1) + ' g/L' : '—'}</dd></div>
+          <div><dt>Method</dt><dd>${esc(b.method)}</dd></div>
+          <div><dt>Vessel</dt><dd>${esc(b.vessel) || '—'}</dd></div>
+          <div><dt>Kick</dt><dd>${b.scores.kick == null ? '—' : b.scores.kick + '/10'}</dd></div>
+          <div><dt>Astringency</dt><dd>${b.scores.bitter == null ? '—' : b.scores.bitter + '/10'}</dd></div>
+        </dl>
+
+        ${b.notes ? '<div class="notes">' + esc(b.notes) + '</div>' : ''}
+
+        <div class="checkpoints">
+          <label style="display:block;margin-bottom:4px">How it held</label>
+          ${cps || '<div class="hint">No checkpoints yet — taste it again in a couple of hours.</div>'}
+        </div>
+
+        <div class="row">
+          <input type="number" step="0.5" min="0" placeholder="hrs" style="width:70px" data-cp="h" data-id="${b.id}">
+          <input type="number" min="1" max="10" placeholder="taste" style="width:80px" data-cp="t" data-id="${b.id}">
+          <input type="number" min="1" max="10" placeholder="astr." style="width:80px" data-cp="b" data-id="${b.id}">
+          <input placeholder="note" style="flex:1;min-width:120px" data-cp="n" data-id="${b.id}">
+          <button data-addcp="${b.id}">Add</button>
+        </div>
+
+        <div class="row end" style="margin-top:14px">
+          <button class="ghost" data-clone="${b.id}">Use as template</button>
+          <button class="ghost" data-del="${b.id}">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── Event delegation ── */
+$('log').addEventListener('click', e => {
+  const head = e.target.closest('[data-toggle]');
+  if (head) {
+    const id = head.dataset.toggle;
+    openId = openId === id ? null : id;
+    render();
+    return;
+  }
+
+  const add = e.target.closest('[data-addcp]');
+  if (add) {
+    const id = add.dataset.addcp;
+    const get = k => document.querySelector(`[data-cp="${k}"][data-id="${id}"]`);
+    const hours = parseFloat(get('h').value);
+    if (isNaN(hours)) { showToast('Enter how many hours in'); return; }
+    const n = v => { const x = parseFloat(v); return isNaN(x) ? null : x; };
+    const b = batches.find(x => x.id === id);
+    b.checkpoints.push({
+      at: new Date().toISOString(),
+      hours,
+      taste: n(get('t').value),
+      bitter: n(get('b').value),
+      note: get('n').value.trim()
+    });
+    b.checkpoints.sort((x, y) => x.hours - y.hours);
+    save(); render();
+    return;
+  }
+
+  const clone = e.target.closest('[data-clone]');
+  if (clone) {
+    const b = batches.find(x => x.id === clone.dataset.clone);
+    $('blend').value = b.blend;
+    $('leafG').value = b.leafG ?? '';
+    $('waterMl').value = b.waterMl ?? '';
+    $('tempC').value = b.tempC ?? '';
+    $('steepSec').value = b.steepSec == null ? '' : fmtMMSS(b.steepSec);
+    $('method').value = b.method;
+    $('vessel').value = b.vessel;
+    updateReadout();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast('Loaded — change one variable');
+    return;
+  }
+
+  const del = e.target.closest('[data-del]');
+  if (del) {
+    if (!confirm('Delete this batch?')) return;
+    batches = batches.filter(x => x.id !== del.dataset.del);
+    save(); render();
+  }
+});
+
+$('sortBy').addEventListener('change', render);
+
+/* ── Export / import ── */
+function download(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  URL.revokeObjectURL(url);
+}
+
+$('exportJson').addEventListener('click', () => {
+  download('brew-log.json', JSON.stringify(batches, null, 2), 'application/json');
+});
+
+$('exportCsv').addEventListener('click', () => {
+  const cols = ['created','blend','leafG','waterMl','ratio_gL','tempC','steep_sec','method','vessel','taste','kick','bitter','verdict','notes','checkpoints'];
+  const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const rows = batches.map(b => [
+    b.created, b.blend, b.leafG, b.waterMl,
+    ratioOf(b) ? ratioOf(b).toFixed(2) : '',
+    b.tempC, b.steepSec, b.method, b.vessel,
+    b.scores.taste, b.scores.kick, b.scores.bitter, b.verdict, b.notes,
+    b.checkpoints.map(c => `+${c.hours}h t${c.taste ?? '-'} a${c.bitter ?? '-'} ${c.note}`).join(' | ')
+  ].map(q).join(','));
+  download('brew-log.csv', [cols.join(','), ...rows].join('\n'), 'text/csv');
+});
+
+$('importBtn').addEventListener('click', () => $('importFile').click());
+$('importFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const incoming = JSON.parse(reader.result);
+      if (!Array.isArray(incoming)) throw new Error('not an array');
+      const seen = new Set(batches.map(b => b.id));
+      const added = incoming.filter(b => b && b.id && !seen.has(b.id));
+      batches = batches.concat(added);
+      save(); render();
+      showToast(`Imported ${added.length} batch${added.length === 1 ? '' : 'es'}`);
+    } catch {
+      showToast('Could not read that file');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+render();
+updateReadout();
+</script>
+</body>
+</html>
