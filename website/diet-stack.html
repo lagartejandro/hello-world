@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diet Stack</title>
+<meta name="description" content="Stack multiple diets and check food compliance across all of them at once.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --surface-raised: #f4f3f1;
+    --text: #18181b;
+    --text-muted: #71717a;
+    --text-faint: #a1a1aa;
+    --border: rgba(0,0,0,0.08);
+    --border-strong: rgba(0,0,0,0.14);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05);
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-xs: 4px;
+
+    --diet-fodmap:     #2563eb;
+    --diet-paleo:      #92400e;
+    --diet-vegetarian: #16a34a;
+    --diet-pescatarian:#0891b2;
+    --diet-vegan:      #065f46;
+    --diet-tcm:        #7c3aed;
+    --diet-seedoilfree:#d97706;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #18181b;
+      --surface: #27272a;
+      --surface-raised: #2f2f33;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+      --text-faint: #71717a;
+      --border: rgba(255,255,255,0.08);
+      --border-strong: rgba(255,255,255,0.14);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.2);
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  /* ── Layout ── */
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 48px 20px 80px;
+  }
+
+  /* ── Header ── */
+  .header { margin-bottom: 36px; }
+  .header h1 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+  }
+  .header p {
+    color: var(--text-muted);
+    font-size: 0.925rem;
+  }
+
+  /* ── Diet Selector ── */
+  .section-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 10px;
+  }
+
+  .diet-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 28px;
+  }
+
+  .diet-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text-muted);
+    font: 500 0.85rem 'Inter', sans-serif;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .diet-btn:hover { border-color: var(--c); color: var(--c); }
+  .diet-btn.active {
+    background: var(--c);
+    border-color: var(--c);
+    color: #fff;
+  }
+  .diet-btn .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.6;
+  }
+  .diet-btn.active .dot { opacity: 1; background: rgba(255,255,255,0.8); }
+
+  /* ── Toast / banner ── */
+  .toast {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+    animation: fadeIn 0.2s ease;
+  }
+  .toast.visible { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── Search ── */
+  .search-wrap {
+    position: relative;
+    margin-bottom: 24px;
+  }
+  .search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-faint);
+    pointer-events: none;
+  }
+  .search-input {
+    width: 100%;
+    padding: 12px 14px 12px 40px;
+    border-radius: var(--radius);
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    font: 1rem 'Inter', sans-serif;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .search-input:focus { border-color: #a1a1aa; }
+  .search-input::placeholder { color: var(--text-faint); }
+
+  /* ── Results ── */
+  .results-meta {
+    font-size: 0.8rem;
+    color: var(--text-faint);
+    margin-bottom: 14px;
+  }
+
+  .results-list { display: flex; flex-direction: column; gap: 12px; }
+
+  .food-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .food-card-top {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .food-name {
+    font-size: 1rem;
+    font-weight: 600;
+    flex: 1;
+  }
+  .food-category {
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    white-space: nowrap;
+    text-transform: capitalize;
+  }
+
+  /* ── Diet pills row ── */
+  .diet-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .diet-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: 1px solid transparent;
+  }
+  .diet-pill.pass {
+    background: color-mix(in srgb, var(--c) 12%, transparent);
+    color: var(--c);
+    border-color: color-mix(in srgb, var(--c) 25%, transparent);
+  }
+  .diet-pill.fail {
+    background: color-mix(in srgb, #ef4444 10%, transparent);
+    color: #dc2626;
+    border-color: color-mix(in srgb, #ef4444 20%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    .diet-pill.pass {
+      background: color-mix(in srgb, var(--c) 20%, transparent);
+      color: color-mix(in srgb, var(--c) 80%, #fff);
+    }
+    .diet-pill.fail {
+      background: rgba(239,68,68,0.15);
+      color: #f87171;
+    }
+  }
+  .diet-pill svg { flex-shrink: 0; }
+
+  /* ── Caveats ── */
+  .caveats { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+  .caveat {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    padding-left: 2px;
+    display: flex;
+    gap: 5px;
+    align-items: flex-start;
+  }
+  .caveat-label {
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* ── TCM tags ── */
+  .tcm-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+  }
+  .tcm-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    align-self: center;
+    margin-right: 2px;
+  }
+  .tcm-tag {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-weight: 500;
+    border: 1px solid transparent;
+  }
+  .tcm-hot     { background: rgba(239,68,68,0.12);  color: #dc2626; border-color: rgba(239,68,68,0.2); }
+  .tcm-warm    { background: rgba(249,115,22,0.12); color: #c2410c; border-color: rgba(249,115,22,0.2); }
+  .tcm-neutral { background: var(--surface-raised); color: var(--text-muted); border-color: var(--border); }
+  .tcm-cool    { background: rgba(59,130,246,0.10); color: #1d4ed8; border-color: rgba(59,130,246,0.2); }
+  .tcm-cold    { background: rgba(37,99,235,0.12);  color: #1e40af; border-color: rgba(37,99,235,0.2); }
+  .tcm-damp    { background: rgba(132,204,22,0.12); color: #4d7c0f; border-color: rgba(132,204,22,0.2); }
+  .tcm-other   { background: var(--surface-raised); color: var(--text-muted); border-color: var(--border); }
+  @media (prefers-color-scheme: dark) {
+    .tcm-hot     { color: #fca5a5; }
+    .tcm-warm    { color: #fdba74; }
+    .tcm-neutral { color: var(--text-muted); }
+    .tcm-cool    { color: #93c5fd; }
+    .tcm-cold    { color: #bfdbfe; }
+    .tcm-damp    { color: #bef264; }
+  }
+  .tcm-notes {
+    font-size: 0.75rem;
+    color: var(--text-faint);
+    font-style: italic;
+    align-self: center;
+    margin-left: 2px;
+  }
+
+  /* ── Empty / prompt states ── */
+  .state-msg {
+    text-align: center;
+    padding: 60px 0;
+    color: var(--text-faint);
+  }
+  .state-msg p { font-size: 0.9rem; margin-top: 8px; }
+
+  /* ── Responsive ── */
+  @media (max-width: 480px) {
+    .page { padding-top: 32px; }
+    .header h1 { font-size: 1.4rem; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="header">
+    <h1>Diet Stack</h1>
+    <p>Select your diets, then search any food to see if it's compliant.</p>
+  </header>
+
+  <div class="section-label">Your diets</div>
+  <div class="diet-grid" id="dietGrid"></div>
+
+  <div class="toast" id="toast">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 5v4M8 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
+    <span id="toastMsg"></span>
+  </div>
+
+  <div class="search-wrap">
+    <svg class="search-icon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+      <circle cx="9" cy="9" r="6"/><path d="M15 15l-3.5-3.5"/>
+    </svg>
+    <input
+      id="searchInput"
+      class="search-input"
+      type="search"
+      placeholder="Search foods&hellip;"
+      autocomplete="off"
+      autocorrect="off"
+      spellcheck="false"
+    >
+  </div>
+
+  <div id="resultsMeta" class="results-meta"></div>
+  <div id="resultsList" class="results-list"></div>
+
+</div>
+
+<script>
+// ── Diet definitions ─────────────────────────────────────────────────────────
+const DIETS = [
+  { key: 'low_fodmap',      label: 'Low FODMAP',    color: '#2563eb' },
+  { key: 'paleo',           label: 'Paleo',         color: '#92400e' },
+  { key: 'vegetarian',      label: 'Vegetarian',    color: '#16a34a' },
+  { key: 'pescatarian',     label: 'Pescatarian',   color: '#0891b2' },
+  { key: 'vegan',           label: 'Vegan',         color: '#065f46' },
+  { key: 'tcm',             label: 'TCM',           color: '#7c3aed' },
+  { key: 'seed_oil_free',   label: 'Seed Oil Free', color: '#d97706' },
+];
+
+// Diet A's foods ⊂ Diet B's foods → A is stricter, B is redundant when A is active
+// ENCOMPASSES[strict] = [redundant diets to auto-deselect]
+const ENCOMPASSES = {
+  'vegan':       ['vegetarian', 'pescatarian'],
+  'vegetarian':  ['pescatarian'],
+};
+
+// True conflicts: intersection of allowed foods is empty
+// (none in the current diet set — built for future extension)
+const CONFLICTS = [
+  // e.g. ['carnivore', 'vegan']
+];
+
+// ── State ────────────────────────────────────────────────────────────────────
+let selectedDiets = new Set();
+let allFoods = [];
+let fuse = null;
+let currentQuery = '';
+
+// ── Data loading ─────────────────────────────────────────────────────────────
+fetch('foods.json')
+  .then(r => r.json())
+  .then(data => {
+    allFoods = data.foods;
+    fuse = new Fuse(allFoods, {
+      keys: ['name'],
+      threshold: 0.35,
+      includeScore: true,
+      minMatchCharLength: 2,
+      ignoreLocation: true,
+    });
+    renderResults();
+  })
+  .catch(() => {
+    document.getElementById('resultsList').innerHTML =
+      '<div class="state-msg"><p>Could not load food data.</p></div>';
+  });
+
+// ── Build diet buttons ────────────────────────────────────────────────────────
+const grid = document.getElementById('dietGrid');
+DIETS.forEach(diet => {
+  const btn = document.createElement('button');
+  btn.className = 'diet-btn';
+  btn.style.setProperty('--c', diet.color);
+  btn.dataset.key = diet.key;
+  btn.innerHTML = `<span class="dot"></span>${diet.label}`;
+  btn.addEventListener('click', () => toggleDiet(diet.key));
+  grid.appendChild(btn);
+});
+
+// ── Diet toggle logic ─────────────────────────────────────────────────────────
+function toggleDiet(key) {
+  if (selectedDiets.has(key)) {
+    selectedDiets.delete(key);
+    updateDietUI();
+    renderResults();
+    return;
+  }
+
+  // Check for true conflicts first
+  for (const [a, b] of CONFLICTS) {
+    if ((key === a && selectedDiets.has(b)) || (key === b && selectedDiets.has(a))) {
+      const otherLabel = DIETS.find(d => d.key === (key === a ? b : a))?.label;
+      showToast(`${DIETS.find(d=>d.key===key).label} and ${otherLabel} are incompatible diets.`);
+      return;
+    }
+  }
+
+  // Add the diet
+  selectedDiets.add(key);
+
+  // Apply encompass logic — remove redundant diets
+  const removed = [];
+  for (const [strict, redundants] of Object.entries(ENCOMPASSES)) {
+    if (selectedDiets.has(strict)) {
+      for (const r of redundants) {
+        if (selectedDiets.has(r)) {
+          selectedDiets.delete(r);
+          removed.push(DIETS.find(d => d.key === r)?.label);
+        }
+      }
+    }
+  }
+
+  if (removed.length > 0) {
+    const strictLabel = DIETS.find(d => d.key === key)?.label;
+    // If the newly added diet was itself redundant (edge case: adding Pescatarian
+    // when Vegan is active → Vegan encompasses Pescatarian → Pescatarian gets removed)
+    if (!selectedDiets.has(key)) {
+      const coveringDiet = Object.entries(ENCOMPASSES)
+        .find(([, reds]) => reds.includes(key) && selectedDiets.has(key.substr(0,0) || '') || reds.includes(key));
+      const coveringLabel = DIETS.find(d =>
+        (ENCOMPASSES[d.key] || []).includes(key) && selectedDiets.has(d.key)
+      )?.label;
+      showToast(`${strictLabel} is already covered by ${coveringLabel ?? 'a stricter diet'}.`);
+    } else {
+      showToast(`Removed ${removed.join(' and ')} — already covered by ${strictLabel}.`);
+    }
+  }
+
+  updateDietUI();
+  renderResults();
+}
+
+function updateDietUI() {
+  document.querySelectorAll('.diet-btn').forEach(btn => {
+    btn.classList.toggle('active', selectedDiets.has(btn.dataset.key));
+  });
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+let toastTimeout;
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toastMsg').textContent = msg;
+  toast.classList.add('visible');
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toast.classList.remove('visible'), 4000);
+}
+
+// ── Search ───────────────────────────────────────────────────────────────────
+document.getElementById('searchInput').addEventListener('input', e => {
+  currentQuery = e.target.value.trim();
+  renderResults();
+});
+
+// ── Render ───────────────────────────────────────────────────────────────────
+const PASS_ICON = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6.5l2.5 2.5 5.5-5.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const FAIL_ICON = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
+
+function getTcmClass(prop) {
+  if (prop === 'hot')          return 'tcm-hot';
+  if (prop === 'warm')         return 'tcm-warm';
+  if (prop === 'neutral')      return 'tcm-neutral';
+  if (prop === 'cool')         return 'tcm-cool';
+  if (prop === 'cold')         return 'tcm-cold';
+  if (prop.includes('damp'))   return 'tcm-damp';
+  return 'tcm-other';
+}
+
+function renderFoodCard(food) {
+  const activeDiets = DIETS.filter(d => selectedDiets.has(d.key));
+  const card = document.createElement('div');
+  card.className = 'food-card';
+
+  // Header row
+  const top = document.createElement('div');
+  top.className = 'food-card-top';
+  top.innerHTML = `<span class="food-name">${food.name}</span><span class="food-category">${food.category.replace(/-/g,' ')}</span>`;
+  card.appendChild(top);
+
+  if (activeDiets.length === 0) {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'font-size:0.8rem;color:var(--text-faint);';
+    hint.textContent = 'Select diets above to see compliance.';
+    card.appendChild(hint);
+    return card;
+  }
+
+  // Diet pills
+  const pills = document.createElement('div');
+  pills.className = 'diet-pills';
+
+  const caveatsData = [];
+
+  activeDiets.forEach(diet => {
+    let pass, caveat;
+    if (diet.key === 'tcm') {
+      pass = !food.tcm_fail;
+      caveat = null;
+    } else if (diet.key === 'low_fodmap') {
+      pass = food.low_fodmap;
+      caveat = food.low_fodmap_caveat;
+    } else {
+      pass = food[diet.key];
+      caveat = null;
+    }
+
+    const pill = document.createElement('span');
+    pill.className = `diet-pill ${pass ? 'pass' : 'fail'}`;
+    pill.style.setProperty('--c', diet.color);
+    pill.innerHTML = `${pass ? PASS_ICON : FAIL_ICON} ${diet.label}`;
+    pills.appendChild(pill);
+
+    if (caveat) {
+      caveatsData.push({ label: diet.label, text: caveat });
+    }
+  });
+  card.appendChild(pills);
+
+  // Caveats
+  if (caveatsData.length > 0) {
+    const caveatsEl = document.createElement('div');
+    caveatsEl.className = 'caveats';
+    caveatsData.forEach(c => {
+      const cv = document.createElement('div');
+      cv.className = 'caveat';
+      cv.innerHTML = `<span class="caveat-label">${c.label}:</span><span>${c.text}</span>`;
+      caveatsEl.appendChild(cv);
+    });
+    card.appendChild(caveatsEl);
+  }
+
+  // TCM row (if TCM selected)
+  if (selectedDiets.has('tcm') && food.tcm_properties && food.tcm_properties.length > 0) {
+    const tcmRow = document.createElement('div');
+    tcmRow.className = 'tcm-row';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'tcm-label';
+    lbl.textContent = 'TCM';
+    tcmRow.appendChild(lbl);
+
+    food.tcm_properties.forEach(prop => {
+      const tag = document.createElement('span');
+      tag.className = `tcm-tag ${getTcmClass(prop)}`;
+      tag.textContent = prop;
+      tcmRow.appendChild(tag);
+    });
+
+    if (food.tcm_notes) {
+      const notes = document.createElement('span');
+      notes.className = 'tcm-notes';
+      notes.textContent = food.tcm_notes;
+      tcmRow.appendChild(notes);
+    }
+
+    card.appendChild(tcmRow);
+  }
+
+  return card;
+}
+
+function renderResults() {
+  const listEl  = document.getElementById('resultsList');
+  const metaEl  = document.getElementById('resultsMeta');
+  listEl.innerHTML = '';
+  metaEl.textContent = '';
+
+  if (!allFoods.length) return;
+
+  let foods;
+  if (currentQuery.length >= 2) {
+    const results = fuse.search(currentQuery);
+    foods = results.map(r => r.item).slice(0, 30);
+  } else if (currentQuery.length === 1) {
+    foods = allFoods.filter(f =>
+      f.name.toLowerCase().startsWith(currentQuery.toLowerCase())
+    ).slice(0, 30);
+  } else {
+    // No query: show nothing or a prompt
+    if (selectedDiets.size === 0) {
+      listEl.innerHTML = '<div class="state-msg"><p>Select diets above and search for a food.</p></div>';
+    } else {
+      listEl.innerHTML = '<div class="state-msg"><p>Type a food name to check compliance.</p></div>';
+    }
+    return;
+  }
+
+  if (foods.length === 0) {
+    listEl.innerHTML = '<div class="state-msg"><p>No foods found. Try a different search.</p></div>';
+    return;
+  }
+
+  metaEl.textContent = `${foods.length} result${foods.length !== 1 ? 's' : ''}`;
+  foods.forEach(food => listEl.appendChild(renderFoodCard(food)));
+}
+</script>
+</body>
+</html>

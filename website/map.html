@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Camino Francés × 2026 total solar eclipse</title>
+<meta name="description" content="Interactive map overlaying the Camino Francés pilgrim route with the path of the August 12 2026 total solar eclipse across northern Spain. Eclipse path data by Fred Espenak, NASA's GSFC.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --text: #18181b;
+    --text-muted: #71717a;
+    --text-faint: #a1a1aa;
+    --border: rgba(0,0,0,0.08);
+    --border-strong: rgba(0,0,0,0.14);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06);
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #18181b;
+      --surface: #27272a;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+      --text-faint: #71717a;
+      --border: rgba(255,255,255,0.08);
+      --border-strong: rgba(255,255,255,0.14);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.2);
+      --shadow-lg: 0 8px 24px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 48px 20px 72px;
+  }
+
+  .header {
+    margin-bottom: 24px;
+  }
+
+  .header h1 {
+    font-size: 20px;
+    font-weight: 500;
+    letter-spacing: -0.3px;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+
+  .header p {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.55;
+    max-width: 580px;
+  }
+
+  /* ── Controls ─────────────────────────────────────────────────────────────── */
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 3px;
+    width: fit-content;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .ctrl-btn {
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+    white-space: nowrap;
+  }
+
+  .ctrl-btn:hover { color: var(--text); }
+
+  .ctrl-btn.active {
+    background: var(--bg);
+    color: var(--text);
+    box-shadow: var(--shadow-sm);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ctrl-btn { transition: none; }
+  }
+
+  /* ── Map ──────────────────────────────────────────────────────────────────── */
+  #map {
+    width: 100%;
+    height: 540px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  /* Leaflet attribution tweak */
+  .leaflet-control-attribution {
+    font-family: 'Inter', sans-serif;
+    font-size: 10px !important;
+    background: rgba(255,255,255,0.82) !important;
+    backdrop-filter: blur(4px);
+    border-radius: 4px 0 0 0 !important;
+  }
+
+  /* ── Legend ──────────────────────────────────────────────────────────────── */
+  .legend {
+    background: rgba(255,255,255,0.94);
+    border: 1px solid rgba(0,0,0,0.09);
+    border-radius: var(--radius-sm);
+    padding: 11px 14px;
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    font-family: 'Inter', sans-serif;
+    min-width: 168px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .legend {
+      background: rgba(39,39,42,0.92);
+      border-color: rgba(255,255,255,0.1);
+    }
+  }
+
+  .legend-title {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 9px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    margin-bottom: 6px;
+  }
+
+  .legend-item:last-child { margin-bottom: 0; }
+
+  .lg-line  { width: 20px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+  .lg-band  { width: 20px; height: 8px; border-radius: 2px; flex-shrink: 0;
+               background: rgba(58,111,176,0.22); border: 1px solid rgba(58,111,176,0.5); }
+  .lg-dash  { width: 20px; height: 0; border-top: 2px dashed #1a4f8c; flex-shrink: 0; opacity: 0.7; }
+  .lg-dot   { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+               border: 1.5px solid rgba(255,255,255,0.9); box-shadow: 0 0 0 0.5px rgba(0,0,0,0.15); }
+
+  /* ── Tooltip ─────────────────────────────────────────────────────────────── */
+  .town-tooltip {
+    background: #18181b !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 8px 12px !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 13px !important;
+    color: #fafafa !important;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.22), 0 1px 4px rgba(0,0,0,0.14) !important;
+    white-space: nowrap !important;
+  }
+
+  .town-tooltip::before { border-top-color: #18181b !important; }
+
+  .tt-name { font-weight: 500; margin-bottom: 2px; }
+  .tt-status { font-size: 11.5px; opacity: 0.7; }
+  .tt-totality { color: #fb923c; opacity: 1 !important; }
+
+  /* ── Caption ─────────────────────────────────────────────────────────────── */
+  .caption {
+    margin-top: 14px;
+    font-size: 11.5px;
+    color: var(--text-faint);
+    line-height: 1.6;
+    max-width: 780px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>Camino Francés &times; 2026 total solar eclipse</h1>
+    <p>Path of totality for the August&nbsp;12, 2026 eclipse, overlaid on the Camino de Santiago (French Way). Toggle layers &mdash; click any town for details.</p>
+  </div>
+
+  <div class="controls" role="group" aria-label="Map layers">
+    <button class="ctrl-btn active" id="b-both" onclick="setL('both')">Show both</button>
+    <button class="ctrl-btn"        id="b-cam"  onclick="setL('cam')">Camino only</button>
+    <button class="ctrl-btn"        id="b-ecl"  onclick="setL('ecl')">Eclipse only</button>
+  </div>
+
+  <div id="map" aria-label="Interactive map"></div>
+
+  <p class="caption">Eclipse path coordinates from Fred Espenak, NASA&rsquo;s GSFC (eclipse.gsfc.nasa.gov/SEpath/SEpath2001/SE2026Aug12Tpath.html), at 2-minute intervals plus terminal limit. Camino route approximated from town coordinates.</p>
+
+</div>
+<script>
+// ── Data ─────────────────────────────────────────────────────────────────────
+
+// Northern limit of totality — from Espenak/NASA GSFC SE2026Aug12Tpath
+// Rows: 18:24 → 18:30 UT, plus the terminal limit (end of totality)
+const eclNorth = [
+  [-(8+48.1/60), 45+48.1/60],  // ~18:24
+  [-(4+56.9/60), 44+27.4/60],  // 18:26
+  [-(2+ 5.1/60), 42+54.5/60],  // 18:28
+  [ (3+17.7/60), 40+39.9/60],  // 18:30
+  [ (6+20.4/60), 39+42.5/60],  // terminal limit (end of totality)
+];
+
+// Southern limit of totality — Espenak/NASA GSFC
+// Rows: 18:24 → 18:32 UT, plus the terminal limit
+const eclSouth = [
+  [-(13+ 0.5/60), 45+59.0/60], // ~18:24
+  [-(11+25.2/60), 44+49.9/60], // 18:26
+  [-(9 +33.1/60), 43+36.4/60], // 18:28
+  [-(7 +14.2/60), 42+15.8/60], // 18:30
+  [-(4 + 2.4/60), 40+41.0/60], // 18:32
+  [ (4+32.4/60),  37+41.4/60], // terminal limit (end of totality)
+];
+
+// Centerline — Espenak/NASA GSFC
+const eclCenter = [
+  [-(10+11.4/60), 45+56.6/60], // ~18:24
+  [-(8 +23.9/60), 44+42.8/60], // 18:26
+  [-(6 +11.3/60), 43+22.3/60], // 18:28
+  [-(3 +11.1/60), 41+49.0/60], // 18:30
+  [ (2+57.0/60),  39+24.5/60], // 18:32
+  [ (5+24.9/60),  38+40.8/60], // terminal limit
+];
+
+// Camino towns [lon, lat, name]
+const cam = [
+  [-1.2367,43.1633,'Saint-Jean-Pied-de-Port'],[-1.3197,43.0092,'Roncesvalles'],
+  [-1.6432,42.8125,'Pamplona'],[-1.8141,42.6720,'Puente la Reina'],
+  [-2.0317,42.6713,'Estella'],[-2.3514,42.5611,'Los Arcos'],
+  [-2.4449,42.4668,'Logroño'],[-2.7339,42.4158,'Nájera'],
+  [-2.9536,42.4406,'Santo Domingo de la Calzada'],[-3.2706,42.3756,'Belorado'],
+  [-3.6097,42.3796,'San Juan de Ortega'],[-3.7038,42.3408,'Burgos'],
+  [-4.0610,42.3711,'Hornillos del Camino'],[-4.2486,42.3328,'Castrojeriz'],
+  [-4.4060,42.2670,'Frómista'],[-4.6027,42.3380,'Carrión de los Condes'],
+  [-4.9009,42.3705,'Calzadilla'],[-5.0290,42.3700,'Sahagún'],
+  [-5.3970,42.4870,'Mansilla de las Mulas'],[-5.5671,42.5987,'León'],
+  [-5.7790,42.4870,'Villar de Mazarife'],[-6.0610,42.4570,'Astorga'],
+  [-6.2060,42.4910,'Rabanal del Camino'],[-6.4400,42.4880,'Molinaseca'],
+  [-6.5983,42.5505,'Ponferrada'],[-6.8086,42.6065,'Villafranca del Bierzo'],
+  [-7.0420,42.7090,'O Cebreiro'],[-7.2580,42.7820,'Triacastela'],
+  [-7.4140,42.7780,'Sarria'],[-7.6160,42.8070,'Portomarín'],
+  [-7.8690,42.8730,'Palas de Rei'],[-8.0140,42.9140,'Melide'],
+  [-8.1620,42.9280,'Arzúa'],[-8.3580,42.9080,'O Pedrouzo'],
+  [-8.5446,42.8806,'Santiago de Compostela']
+];
+
+// ── Totality test ─────────────────────────────────────────────────────────────
+function lerpAt(arr, lon) {
+  const pts = [...arr].sort((a,b) => a[0]-b[0]);
+  if (lon <= pts[0][0]) return pts[0][1];
+  if (lon >= pts[pts.length-1][0]) return pts[pts.length-1][1];
+  for (let i = 0; i < pts.length-1; i++) {
+    if (lon >= pts[i][0] && lon <= pts[i+1][0]) {
+      const t = (lon-pts[i][0]) / (pts[i+1][0]-pts[i][0]);
+      return pts[i][1] + t*(pts[i+1][1]-pts[i][1]);
+    }
+  }
+  return pts[pts.length-1][1];
+}
+function inTotality(lon, lat) {
+  if (lon < -13 || lon > 6.34) return false;
+  return lat <= lerpAt(eclNorth, lon) && lat >= lerpAt(eclSouth, lon);
+}
+
+// ── Map init ──────────────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [42.0, -3.5],
+  zoom: 6,
+  zoomControl: true,
+  scrollWheelZoom: true,
+});
+
+// CartoDB Positron — clean light basemap, no API key required
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains: 'abcd',
+  maxZoom: 19,
+}).addTo(map);
+
+// ── Eclipse layers ────────────────────────────────────────────────────────────
+// Build polygon: north edge then south edge reversed
+const bandLatLngs = [
+  ...eclNorth.map(([lo,la]) => [la, lo]),
+  ...[...eclSouth].reverse().map(([lo,la]) => [la, lo]),
+];
+
+const eclipseBand = L.polygon(bandLatLngs, {
+  color:       'rgba(58,111,176,0.55)',
+  weight:      1,
+  fillColor:   '#3a6fb0',
+  fillOpacity: 0.15,
+  smoothFactor: 1.5,
+});
+
+const eclipseCenter = L.polyline(
+  eclCenter.map(([lo,la]) => [la, lo]),
+  {
+    color:     '#1a4f8c',
+    weight:    2,
+    opacity:   0.6,
+    dashArray: '8 6',
+    smoothFactor: 1.5,
+  }
+);
+
+// ── Camino layers ─────────────────────────────────────────────────────────────
+const caminoLine = L.polyline(
+  cam.map(([lo,la]) => [la, lo]),
+  {
+    color:    '#c97316',
+    weight:   3,
+    opacity:  0.9,
+    lineJoin: 'round',
+    lineCap:  'round',
+    smoothFactor: 1,
+  }
+);
+
+const BIG = new Set([
+  'Saint-Jean-Pied-de-Port','Pamplona','Logroño','Burgos',
+  'León','Astorga','Ponferrada','Sarria','Santiago de Compostela'
+]);
+
+const caminoMarkers = L.layerGroup(
+  cam.map(([lo,la,name]) => {
+    const tot = inTotality(lo, la);
+    const marker = L.circleMarker([la, lo], {
+      radius:      tot ? 7 : 5,
+      fillColor:   tot ? '#c0392b' : '#c97316',
+      color:       '#ffffff',
+      weight:      tot ? 2 : 1.5,
+      fillOpacity: 1,
+      opacity:     1,
+    });
+
+    const statusHtml = tot
+      ? '<div class="tt-status tt-totality">In the path of totality</div>'
+      : '<div class="tt-status">Partial eclipse only</div>';
+
+    marker.bindTooltip(
+      `<div class="tt-name">${name}</div>${statusHtml}`,
+      {
+        className:   'town-tooltip',
+        direction:   'top',
+        offset:      [0, -6],
+        opacity:     1,
+        permanent:   false,
+        sticky:      false,
+      }
+    );
+
+    // Hover highlight
+    marker.on('mouseover', function() {
+      this.setStyle({ radius: (tot ? 7 : 5) + 2.5 });
+      this.openTooltip();
+    });
+    marker.on('mouseout', function() {
+      this.setStyle({ radius: tot ? 7 : 5 });
+      this.closeTooltip();
+    });
+
+    return marker;
+  })
+);
+
+// ── Layer groups ──────────────────────────────────────────────────────────────
+const eclipseGroup = L.layerGroup([eclipseBand, eclipseCenter]);
+const caminoGroup  = L.layerGroup([caminoLine, caminoMarkers]);
+
+eclipseGroup.addTo(map);
+caminoGroup.addTo(map);
+
+// ── Toggle ────────────────────────────────────────────────────────────────────
+let currentLayer = 'both';
+
+function setL(l) {
+  currentLayer = l;
+  ['both','cam','ecl'].forEach(k =>
+    document.getElementById('b-'+k).classList.toggle('active', k === l)
+  );
+
+  if (l === 'both') {
+    eclipseGroup.addTo(map);
+    caminoGroup.addTo(map);
+  } else if (l === 'cam') {
+    map.removeLayer(eclipseGroup);
+    caminoGroup.addTo(map);
+  } else {
+    map.removeLayer(caminoGroup);
+    eclipseGroup.addTo(map);
+  }
+}
+
+// ── Legend control ────────────────────────────────────────────────────────────
+const Legend = L.Control.extend({
+  options: { position: 'bottomright' },
+  onAdd() {
+    const div = L.DomUtil.create('div', 'legend');
+    div.innerHTML = `
+      <div class="legend-title">Legend</div>
+      <div class="legend-item"><div class="lg-line" style="background:#c97316;"></div> Camino Francés</div>
+      <div class="legend-item"><div class="lg-band"></div> Path of totality</div>
+      <div class="legend-item"><div class="lg-dash"></div> Centerline</div>
+      <div class="legend-item"><div class="lg-dot" style="background:#c97316;"></div> Camino town</div>
+      <div class="legend-item"><div class="lg-dot" style="background:#c0392b;"></div> In totality</div>
+    `;
+    L.DomEvent.disableClickPropagation(div);
+    L.DomEvent.disableScrollPropagation(div);
+    return div;
+  }
+});
+new Legend().addTo(map);
+
+// Move zoom control to top-right
+map.zoomControl.setPosition('topright');
+</script>
+</body>
+</html>
