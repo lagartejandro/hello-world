@@ -196,6 +196,58 @@
 
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 
+  /* ── Ingredient editor ── */
+  .ing-head, .ing-row {
+    display: grid;
+    grid-template-columns: 1fr 74px 62px 74px 46px 28px;
+    gap: 8px; align-items: center;
+  }
+  .ing-head {
+    font-size: 0.72rem; color: var(--text-faint);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 0 2px 6px;
+  }
+  .ing-head span:not(:first-child) { text-align: right; }
+  .ing-row { margin-bottom: 8px; }
+  .ing-row input { padding: 8px 10px; font-size: 0.9rem; }
+  .ing-row input[type="number"] { text-align: right; }
+  .ing-pct {
+    font-size: 0.82rem; font-variant-numeric: tabular-nums;
+    color: var(--text-muted); text-align: right;
+  }
+  .ing-del {
+    border: none; background: transparent; color: var(--text-faint);
+    font-size: 1.2rem; line-height: 1; padding: 4px; cursor: pointer;
+  }
+  .ing-del:hover { color: var(--bad); background: transparent; }
+  @media (max-width: 560px) {
+    .ing-head { display: none; }
+    .ing-row {
+      grid-template-columns: 1fr 66px 28px;
+      grid-template-areas: "name grams del" "temp steep pct";
+      padding-bottom: 10px; margin-bottom: 10px;
+      border-bottom: 1px dashed var(--border);
+    }
+    .ing-row .i-name  { grid-area: name; }
+    .ing-row .i-grams { grid-area: grams; }
+    .ing-row .i-temp  { grid-area: temp; }
+    .ing-row .i-steep { grid-area: steep; }
+    .ing-row .ing-pct { grid-area: pct; }
+    .ing-row .ing-del { grid-area: del; }
+  }
+
+  /* ── Ingredient list in a saved entry ── */
+  .ing-list { margin-bottom: 14px; }
+  .ing-item {
+    display: flex; gap: 10px; align-items: baseline;
+    font-size: 0.85rem; padding: 6px 0;
+    border-top: 1px dashed var(--border);
+  }
+  .ing-item .g { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 58px; text-align: right; }
+  .ing-item .p { font-variant-numeric: tabular-nums; color: var(--text-faint); min-width: 48px; text-align: right; }
+  .ing-item .n { flex: 1; min-width: 0; }
+  .ing-item .x { font-size: 0.78rem; color: var(--accent); }
+
   .toast {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
     background: var(--text); color: var(--bg);
@@ -234,23 +286,42 @@
     <form id="batchForm">
       <div class="grid">
         <div class="field full">
-          <label for="blend">Blend</label>
-          <input id="blend" required placeholder="what went in — leaf, peel, additions, proportions">
+          <label for="blendName">Blend name</label>
+          <input id="blendName" required placeholder="Tangerine #7, Morning Batch B...">
         </div>
+      </div>
 
-        <div class="field">
-          <label for="leafG">Leaf (g)</label>
-          <input id="leafG" type="number" step="0.1" min="0" required inputmode="decimal">
-        </div>
+      <div style="height:18px"></div>
+
+      <!-- ── Ingredients ── -->
+      <label style="display:block;margin-bottom:8px">Ingredients</label>
+      <div class="ing-head">
+        <span>Ingredient</span><span>Grams</span><span>&deg;C</span><span>Steep</span><span>%</span><span></span>
+      </div>
+      <div id="ingRows"></div>
+      <datalist id="ingNames"></datalist>
+      <div class="row" style="margin-top:4px">
+        <button type="button" id="addIng" class="ghost">+ Add ingredient</button>
+        <div class="spacer"></div>
+        <div class="hint" id="ingTotal">&mdash;</div>
+      </div>
+      <div class="hint" style="margin-top:6px">
+        Per-ingredient &deg;C and steep are optional &mdash; leave blank to use the batch settings below.
+        Fill them in only when you brewed something separately or added it late.
+      </div>
+
+      <div style="height:18px"></div>
+
+      <div class="grid">
         <div class="field">
           <label for="waterMl">Water (ml)</label>
           <input id="waterMl" type="number" step="10" min="0" required inputmode="numeric">
         </div>
-
         <div class="field">
           <label for="tempC">Water temp (&deg;C)</label>
           <input id="tempC" type="number" step="1" min="0" max="100" inputmode="numeric">
         </div>
+
         <div class="field">
           <label for="steepSec">Steep (mm:ss)</label>
           <input id="steepSec" placeholder="4:30" inputmode="text">
@@ -274,6 +345,7 @@
 
       <div style="height:14px"></div>
       <div class="readout" id="readout">
+        <div><span>Leaf</span> <b id="rLeaf">&mdash;</b></div>
         <div><span>Ratio</span> <b id="rRatio">&mdash;</b></div>
         <div><span>Yield</span> <b id="rYield">&mdash;</b></div>
         <div><span>Per 250ml cup</span> <b id="rCup">&mdash;</b></div>
@@ -351,8 +423,27 @@ let batches = load();
 let openId = null;
 
 function load() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+  let raw;
+  try { raw = JSON.parse(localStorage.getItem(KEY)) || []; }
   catch { return []; }
+  return raw.map(migrate);
+}
+
+// v1 stored a free-text `blend` plus a single `leafG`. v2 stores a structured
+// ingredient list; the old blend text becomes the batch name and its whole
+// leaf mass becomes one unsplit ingredient, which you can break apart later.
+function migrate(b) {
+  if (Array.isArray(b.ingredients)) return b;
+  b.name = b.name || b.blend || '';
+  b.ingredients = b.leafG != null
+    ? [{ name: b.blend || 'leaf', grams: b.leafG, tempC: null, steepSec: null }]
+    : [];
+  delete b.blend;
+  return b;
+}
+
+function totalGrams(ings) {
+  return (ings || []).reduce((s, i) => s + (i.grams || 0), 0);
 }
 function save() {
   localStorage.setItem(KEY, JSON.stringify(batches));
@@ -410,34 +501,121 @@ $('timerUse').addEventListener('click', () => {
 });
 timerRender();
 
-/* ── Live ratio readout ── */
-function ratioOf(b) {
-  return (b.leafG && b.waterMl) ? (b.leafG / (b.waterMl / 1000)) : null;
+/* ── Ingredient rows ── */
+function addIngRow(data) {
+  data = data || {};
+  const row = document.createElement('div');
+  row.className = 'ing-row';
+  row.innerHTML = `
+    <input class="i-name" list="ingNames" placeholder="ripe pu-erh, tangerine peel...">
+    <input class="i-grams" type="number" step="0.1" min="0" inputmode="decimal" placeholder="g">
+    <input class="i-temp" type="number" step="1" min="0" max="100" inputmode="numeric" placeholder="&deg;C">
+    <input class="i-steep" placeholder="mm:ss">
+    <div class="ing-pct">&mdash;</div>
+    <button type="button" class="ing-del" title="Remove">&times;</button>`;
+  row.querySelector('.i-name').value  = data.name  || '';
+  row.querySelector('.i-grams').value = data.grams != null ? data.grams : '';
+  row.querySelector('.i-temp').value  = data.tempC != null ? data.tempC : '';
+  row.querySelector('.i-steep').value = data.steepSec != null ? fmtMMSS(data.steepSec) : '';
+  $('ingRows').appendChild(row);
+  return row;
 }
+
+function readIngRows() {
+  return [...$('ingRows').querySelectorAll('.ing-row')].map(r => {
+    const num = sel => {
+      const v = parseFloat(r.querySelector(sel).value);
+      return isNaN(v) ? null : v;
+    };
+    return {
+      name: r.querySelector('.i-name').value.trim(),
+      grams: num('.i-grams'),
+      tempC: num('.i-temp'),
+      steepSec: parseMMSS(r.querySelector('.i-steep').value)
+    };
+  }).filter(i => i.name || i.grams != null);
+}
+
+function resetIngRows(list) {
+  $('ingRows').innerHTML = '';
+  (list && list.length ? list : [{}, {}]).forEach(addIngRow);
+  updateReadout();
+}
+
+// Ingredient names you've used before, so spelling stays consistent and the
+// data stays groupable.
+function refreshIngNames() {
+  const names = [...new Set(
+    batches.flatMap(b => (b.ingredients || []).map(i => i.name).filter(Boolean))
+  )].sort();
+  $('ingNames').innerHTML = names.map(n => `<option value="${esc(n)}">`).join('');
+}
+
+$('addIng').addEventListener('click', () => addIngRow().querySelector('.i-name').focus());
+
+$('ingRows').addEventListener('input', updateReadout);
+$('ingRows').addEventListener('click', e => {
+  const del = e.target.closest('.ing-del');
+  if (!del) return;
+  const rows = $('ingRows').querySelectorAll('.ing-row');
+  if (rows.length === 1) { resetIngRows([{}]); return; }
+  del.closest('.ing-row').remove();
+  updateReadout();
+});
+
+/* ── Live ratio readout ── */
+function leafOf(b) {
+  const t = totalGrams(b.ingredients);
+  return t > 0 ? t : (b.leafG || 0);
+}
+function ratioOf(b) {
+  const g = leafOf(b);
+  return (g && b.waterMl) ? (g / (b.waterMl / 1000)) : null;
+}
+
 function updateReadout() {
-  const leafG = parseFloat($('leafG').value);
+  const rows = [...$('ingRows').querySelectorAll('.ing-row')];
+  const grams = rows.map(r => parseFloat(r.querySelector('.i-grams').value) || 0);
+  const leafG = grams.reduce((a, b) => a + b, 0);
+
+  // Each ingredient as a percentage of leaf mass — this is what makes a recipe
+  // portable between a 500ml test and a 4L urn.
+  rows.forEach((r, i) => {
+    r.querySelector('.ing-pct').textContent =
+      leafG > 0 && grams[i] > 0 ? (grams[i] / leafG * 100).toFixed(1) + '%' : '—';
+  });
+
   const waterMl = parseFloat($('waterMl').value);
+  $('ingTotal').textContent = leafG > 0
+    ? `${rows.filter((_, i) => grams[i] > 0).length} ingredients · ${leafG.toFixed(1)} g total`
+    : '—';
+
   if (leafG > 0 && waterMl > 0) {
-    const r = leafG / (waterMl / 1000);
-    $('rRatio').textContent = r.toFixed(1) + ' g/L';
+    $('rLeaf').textContent = leafG.toFixed(1) + ' g';
+    $('rRatio').textContent = (leafG / (waterMl / 1000)).toFixed(1) + ' g/L';
     $('rYield').textContent = (waterMl / 250).toFixed(1) + ' cups';
     $('rCup').textContent = (leafG / (waterMl / 250)).toFixed(2) + ' g';
   } else {
+    $('rLeaf').textContent = leafG > 0 ? leafG.toFixed(1) + ' g' : '—';
     $('rRatio').textContent = $('rYield').textContent = $('rCup').textContent = '—';
   }
 }
-['leafG', 'waterMl'].forEach(id => $(id).addEventListener('input', updateReadout));
+$('waterMl').addEventListener('input', updateReadout);
 
 /* ── Save a batch ── */
 $('batchForm').addEventListener('submit', e => {
   e.preventDefault();
   const num = id => { const v = parseFloat($(id).value); return isNaN(v) ? null : v; };
 
+  const ingredients = readIngRows();
+  if (!ingredients.length) { showToast('Add at least one ingredient'); return; }
+
   batches.unshift({
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     created: new Date().toISOString(),
-    blend: $('blend').value.trim(),
-    leafG: num('leafG'),
+    name: $('blendName').value.trim(),
+    ingredients,
+    leafG: totalGrams(ingredients) || null,
     waterMl: num('waterMl'),
     tempC: num('tempC'),
     steepSec: parseMMSS($('steepSec').value),
@@ -452,11 +630,12 @@ $('batchForm').addEventListener('submit', e => {
   save();
   render();
 
-  // Keep blend/vessel/method — you usually iterate on one variable at a time.
-  ['leafG', 'waterMl', 'tempC', 'steepSec', 'sTaste', 'sKick', 'sBitter', 'notes']
-    .forEach(id => $(id).value = '');
+  // Keep the recipe and keep the ingredients — you iterate one variable at a
+  // time, so the next batch starts from this one. Only the tasting is cleared.
+  ['sTaste', 'sKick', 'sBitter', 'notes'].forEach(id => $(id).value = '');
+  refreshIngNames();
   updateReadout();
-  showToast('Batch saved');
+  showToast('Batch saved — change one thing');
 });
 
 /* ── Rendering ── */
@@ -495,6 +674,23 @@ function render() {
   log.innerHTML = sortBatches().map(b => {
     const r = ratioOf(b);
     const open = b.id === openId;
+    const leaf = leafOf(b);
+
+    const ings = (b.ingredients || []).map(i => {
+      // Only show per-ingredient temp/steep when they differ from the batch.
+      const extra = [
+        i.tempC != null ? i.tempC + '&deg;C' : null,
+        i.steepSec != null ? fmtMMSS(i.steepSec) : null
+      ].filter(Boolean).join(' · ');
+      return `
+      <div class="ing-item">
+        <div class="n">${esc(i.name) || '<span style="opacity:.5">unnamed</span>'}
+          ${extra ? '<span class="x"> · ' + extra + '</span>' : ''}
+        </div>
+        <div class="g">${i.grams == null ? '—' : i.grams + ' g'}</div>
+        <div class="p">${leaf && i.grams ? (i.grams / leaf * 100).toFixed(1) + '%' : ''}</div>
+      </div>`;
+    }).join('');
 
     const cps = b.checkpoints.map(c => `
       <div class="cp">
@@ -510,7 +706,7 @@ function render() {
     <div class="entry">
       <div class="entry-head" data-toggle="${b.id}">
         <div style="flex:1;min-width:0">
-          <div class="entry-title">${esc(b.blend) || 'Untitled batch'}</div>
+          <div class="entry-title">${esc(b.name) || 'Untitled batch'}</div>
           <div class="entry-sub">
             ${fmtDate(b.created)}
             ${r ? ' &middot; ' + r.toFixed(1) + ' g/L' : ''}
@@ -523,8 +719,13 @@ function render() {
       </div>
 
       <div class="entry-body ${open ? '' : 'hidden'}">
+        <div class="ing-list">
+          <label style="display:block;margin-bottom:4px">Ingredients</label>
+          ${ings || '<div class="hint">No breakdown recorded.</div>'}
+        </div>
+
         <dl class="kv">
-          <div><dt>Leaf</dt><dd>${b.leafG == null ? '—' : b.leafG + ' g'}</dd></div>
+          <div><dt>Leaf</dt><dd>${leafOf(b) ? leafOf(b).toFixed(1) + ' g' : '—'}</dd></div>
           <div><dt>Water</dt><dd>${b.waterMl == null ? '—' : b.waterMl + ' ml'}</dd></div>
           <div><dt>Ratio</dt><dd>${r ? r.toFixed(1) + ' g/L' : '—'}</dd></div>
           <div><dt>Method</dt><dd>${esc(b.method)}</dd></div>
@@ -590,8 +791,8 @@ $('log').addEventListener('click', e => {
   const clone = e.target.closest('[data-clone]');
   if (clone) {
     const b = batches.find(x => x.id === clone.dataset.clone);
-    $('blend').value = b.blend;
-    $('leafG').value = b.leafG ?? '';
+    $('blendName').value = b.name || '';
+    resetIngRows(b.ingredients);
     $('waterMl').value = b.waterMl ?? '';
     $('tempC').value = b.tempC ?? '';
     $('steepSec').value = b.steepSec == null ? '' : fmtMMSS(b.steepSec);
@@ -626,10 +827,17 @@ $('exportJson').addEventListener('click', () => {
 });
 
 $('exportCsv').addEventListener('click', () => {
-  const cols = ['created','blend','leafG','waterMl','ratio_gL','tempC','steep_sec','method','vessel','taste','kick','bitter','verdict','notes','checkpoints'];
+  const cols = ['created','name','ingredients','leaf_g','waterMl','ratio_gL','tempC','steep_sec','method','vessel','taste','kick','bitter','verdict','notes','checkpoints'];
   const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   const rows = batches.map(b => [
-    b.created, b.blend, b.leafG, b.waterMl,
+    b.created, b.name,
+    (b.ingredients || []).map(i => {
+      const pct = leafOf(b) && i.grams ? ` (${(i.grams / leafOf(b) * 100).toFixed(1)}%)` : '';
+      const extra = [i.tempC != null ? i.tempC + 'C' : null,
+                     i.steepSec != null ? fmtMMSS(i.steepSec) : null].filter(Boolean).join(' ');
+      return `${i.name} ${i.grams ?? '?'}g${pct}${extra ? ' [' + extra + ']' : ''}`;
+    }).join('; '),
+    leafOf(b) || '', b.waterMl,
     ratioOf(b) ? ratioOf(b).toFixed(2) : '',
     b.tempC, b.steepSec, b.method, b.vessel,
     b.scores.taste, b.scores.kick, b.scores.bitter, b.verdict, b.notes,
@@ -648,9 +856,9 @@ $('importFile').addEventListener('change', e => {
       const incoming = JSON.parse(reader.result);
       if (!Array.isArray(incoming)) throw new Error('not an array');
       const seen = new Set(batches.map(b => b.id));
-      const added = incoming.filter(b => b && b.id && !seen.has(b.id));
+      const added = incoming.filter(b => b && b.id && !seen.has(b.id)).map(migrate);
       batches = batches.concat(added);
-      save(); render();
+      save(); render(); refreshIngNames();
       showToast(`Imported ${added.length} batch${added.length === 1 ? '' : 'es'}`);
     } catch {
       showToast('Could not read that file');
@@ -660,8 +868,11 @@ $('importFile').addEventListener('change', e => {
   e.target.value = '';
 });
 
+// Migration runs on load; persist it so the stored shape matches the code.
+if (batches.length) save();
 render();
-updateReadout();
+refreshIngNames();
+resetIngRows();
 </script>
 </body>
 </html>
