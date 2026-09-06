@@ -259,6 +259,22 @@
     flex-shrink: 0;
   }
 
+  /* ── Diet-level notes ── */
+  .diet-note {
+    display: flex;
+    gap: 8px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    background: var(--surface-raised);
+    border-left: 2px solid var(--c, var(--border-strong));
+    border-radius: var(--radius-xs);
+    padding: 9px 12px;
+    margin-bottom: 8px;
+  }
+  .diet-note b { color: var(--text); font-weight: 600; }
+  #dietNotes { margin: -20px 0 28px; }
+
   /* ── TCM tags ── */
   .tcm-row {
     display: flex;
@@ -333,6 +349,7 @@
 
   <div class="section-label">Your diets</div>
   <div class="diet-grid" id="dietGrid"></div>
+  <div id="dietNotes"></div>
 
   <div class="toast" id="toast">
     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 5v4M8 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>
@@ -369,6 +386,7 @@ const DIETS = [
   { key: 'nut_free',        label: 'Nut Free',      color: '#78350f' },
   { key: 'seed_oil_free',   label: 'Seed Oil Free', color: '#d97706' },
   { key: 'halal',           label: 'Halal',         color: '#047857' },
+  { key: 'kosher',          label: 'Kosher',        color: '#4338ca' },
   // Plant-forward
   { key: 'pescatarian',     label: 'Pescatarian',   color: '#0891b2' },
   { key: 'vegetarian',      label: 'Vegetarian',    color: '#16a34a' },
@@ -395,6 +413,14 @@ const ENCOMPASSES = {
   'paleo':       ['seed_oil_free', 'gluten_free'],
   'whole30':     ['seed_oil_free', 'gluten_free'],
   'carnivore':   ['gluten_free', 'nut_free'],
+};
+
+// Rules that are not properties of a single food, and so cannot be answered by
+// a food-at-a-time checker. Shown while the diet is selected so the tool is
+// honest about what it is not telling you.
+const DIET_NOTES = {
+  kosher: 'Kashrut also governs combinations and preparation — meat and dairy may not be cooked or eaten together, and products need reliable certification. This checker looks at one food at a time, so it cannot rule on a dish or a specific brand.',
+  halal: 'For meat, halal status is decided by slaughter and certification rather than by the animal alone. This checker looks at one food at a time.',
 };
 
 // True conflicts: no meaningful food satisfies both.
@@ -498,6 +524,19 @@ function updateDietUI() {
   document.querySelectorAll('.diet-btn').forEach(btn => {
     btn.classList.toggle('active', selectedDiets.has(btn.dataset.key));
   });
+  renderDietNotes();
+}
+
+function renderDietNotes() {
+  const el = document.getElementById('dietNotes');
+  el.innerHTML = '';
+  DIETS.filter(d => selectedDiets.has(d.key) && DIET_NOTES[d.key]).forEach(d => {
+    const note = document.createElement('div');
+    note.className = 'diet-note';
+    note.style.setProperty('--c', d.color);
+    note.innerHTML = `<span><b>${d.label}:</b> ${DIET_NOTES[d.key]}</span>`;
+    el.appendChild(note);
+  });
 }
 
 // ── Toast ────────────────────────────────────────────────────────────────────
@@ -584,14 +623,9 @@ function renderFoodCard(food) {
   const caveatsData = [];
 
   activeDiets.forEach(diet => {
-    let pass, caveat;
-    if (diet.key === 'low_fodmap') {
-      pass = food.low_fodmap;
-      caveat = food.low_fodmap_caveat;
-    } else {
-      pass = food[diet.key];
-      caveat = null;
-    }
+    // Any diet may carry a per-food caveat: <key>_caveat in the data.
+    const pass = food[diet.key];
+    const caveat = food[diet.key + '_caveat'] || null;
 
     const pill = document.createElement('span');
     pill.className = `diet-pill ${pass ? 'pass' : 'fail'}`;
