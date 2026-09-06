@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chess Ladder</title>
+<meta name="description" content="Club rating ladder — players, results, and rating-matched pairings for a chess night.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #faf9f7;
+    --surface: #ffffff;
+    --surface-raised: #f4f3f1;
+    --text: #18181b;
+    --text-muted: #71717a;
+    --text-faint: #a1a1aa;
+    --border: rgba(0,0,0,0.08);
+    --border-strong: rgba(0,0,0,0.14);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05);
+    --radius: 10px;
+    --radius-sm: 6px;
+    --radius-xs: 4px;
+
+    --accent: #1e40af;
+    --accent-soft: rgba(30,64,175,0.10);
+    --up: #16a34a;
+    --down: #dc2626;
+    --draw: #a16207;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #18181b;
+      --surface: #27272a;
+      --surface-raised: #2f2f33;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+      --text-faint: #71717a;
+      --border: rgba(255,255,255,0.08);
+      --border-strong: rgba(255,255,255,0.14);
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.2);
+      --accent: #60a5fa;
+      --accent-soft: rgba(96,165,250,0.14);
+      --up: #4ade80;
+      --down: #f87171;
+      --draw: #fbbf24;
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  .page { max-width: 760px; margin: 0 auto; padding: 44px 20px 80px; }
+  @media (max-width: 560px) { .page { padding: 26px 14px 60px; } }
+
+  .header { margin-bottom: 26px; }
+  .header h1 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 6px; }
+  .header p { color: var(--text-muted); font-size: 0.925rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: 18px;
+    margin-bottom: 18px;
+  }
+  .card > h2 {
+    font-size: 0.8rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card > h2 .count {
+    font-size: 0.75rem; color: var(--text-faint);
+    background: var(--surface-raised); border-radius: 999px; padding: 1px 8px;
+    letter-spacing: 0;
+  }
+
+  label { font-size: 0.75rem; font-weight: 500; color: var(--text-muted); }
+  input, select {
+    font-family: inherit; font-size: 0.925rem; color: var(--text);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 9px 11px; width: 100%;
+  }
+  input:focus, select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  button {
+    font-family: inherit; font-size: 0.875rem; font-weight: 500;
+    border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+    background: var(--surface-raised); color: var(--text);
+    padding: 9px 14px; cursor: pointer; white-space: nowrap;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { opacity: .88; color: #fff; }
+  button.ghost { border-color: transparent; background: transparent; color: var(--text-muted); padding: 6px 9px; }
+  button.ghost:hover { color: var(--accent); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button:disabled:hover { border-color: var(--border-strong); color: var(--text); }
+
+  .row { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+  .spacer { flex: 1; }
+  .hint { font-size: 0.78rem; color: var(--text-faint); line-height: 1.5; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 1px solid var(--border); }
+  .tab {
+    border: none; background: none; border-radius: 0;
+    padding: 9px 13px; color: var(--text-muted);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--accent); border-color: transparent; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+  /* ── Standings ── */
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; font-size: 0.7rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint);
+    padding: 0 8px 8px; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 9px 8px; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+  tr:last-child td { border-bottom: none; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: var(--surface-raised); }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .rank { color: var(--text-faint); font-variant-numeric: tabular-nums; width: 30px; }
+  .rating { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .prov { font-size: 0.7rem; color: var(--text-faint); font-weight: 400; }
+  .wld { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: 0.83rem; }
+  .here { width: 8px; height: 8px; border-radius: 50%; background: var(--up); display: inline-block; }
+
+  .delta { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.83rem; }
+  .delta.up { color: var(--up); }
+  .delta.down { color: var(--down); }
+  .delta.flat { color: var(--text-faint); }
+
+  /* ── Player chips ── */
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--border-strong); border-radius: 999px;
+    padding: 6px 12px; font-size: 0.86rem; cursor: pointer;
+    background: var(--surface-raised); user-select: none;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip .r { font-variant-numeric: tabular-nums; opacity: .7; font-size: 0.78rem; }
+
+  /* ── Pairings ── */
+  .pair {
+    display: grid; grid-template-columns: 1fr auto 1fr auto;
+    gap: 10px; align-items: center;
+    padding: 11px 12px; border: 1px solid var(--border);
+    border-radius: var(--radius-sm); margin-bottom: 8px;
+    background: var(--surface-raised);
+  }
+  .pair .side { min-width: 0; }
+  .pair .nm { font-weight: 500; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pair .side.b { text-align: right; }
+  .pair .vs { font-size: 0.72rem; color: var(--text-faint); text-transform: uppercase; letter-spacing: .05em; }
+  .pair .gap { font-size: 0.72rem; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+  @media (max-width: 560px) {
+    .pair { grid-template-columns: 1fr auto 1fr; }
+    .pair > button { grid-column: 1 / -1; }
+  }
+
+  /* ── Result entry ── */
+  .result-btns { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; }
+  .result-btns button { width: 100%; }
+
+  .match {
+    display: flex; gap: 10px; align-items: baseline;
+    padding: 9px 0; border-bottom: 1px solid var(--border);
+    font-size: 0.87rem;
+  }
+  .match:last-child { border-bottom: none; }
+  .match .when { font-size: 0.73rem; color: var(--text-faint); min-width: 78px; font-variant-numeric: tabular-nums; }
+  .match .desc { flex: 1; min-width: 0; }
+  .match .win { font-weight: 600; }
+  .match .lose { color: var(--text-muted); }
+
+  .empty { text-align: center; color: var(--text-faint); padding: 26px 16px; font-size: 0.88rem; line-height: 1.6; }
+
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--text); color: var(--bg);
+    padding: 10px 20px; border-radius: 999px; font-size: 0.875rem;
+    box-shadow: var(--shadow-md); opacity: 0; pointer-events: none;
+    transition: transform .22s ease, opacity .22s ease; z-index: 50;
+    max-width: 90vw; text-align: center;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+  .hidden { display: none !important; }
+
+  dialog {
+    border: none; border-radius: var(--radius); padding: 0;
+    background: var(--surface); color: var(--text);
+    box-shadow: var(--shadow-md); max-width: 440px; width: calc(100vw - 32px);
+  }
+  dialog::backdrop { background: rgba(0,0,0,0.45); }
+  .modal-body { padding: 20px; }
+  .modal-body h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 3px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>Chess Ladder</h1>
+    <p>Club ratings for the room. Mark who's here, pair by rating, record results.</p>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="night">Tonight</button>
+    <button class="tab" data-tab="standings">Standings</button>
+    <button class="tab" data-tab="players">Players</button>
+    <button class="tab" data-tab="history">History</button>
+  </div>
+
+  <!-- ══ TONIGHT ══ -->
+  <div data-panel="night">
+    <div class="card">
+      <h2>Who's here <span class="count" id="hereCount">0</span></h2>
+      <div class="chips" id="hereChips"></div>
+      <div class="hint" id="hereHint" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Record a result</h2>
+      <div class="row" style="margin-bottom:10px">
+        <select id="pA" style="flex:1;min-width:130px"></select>
+        <span class="hint">vs</span>
+        <select id="pB" style="flex:1;min-width:130px"></select>
+      </div>
+      <div class="result-btns">
+        <button id="winA">Left wins</button>
+        <button id="drawBtn">Draw</button>
+        <button id="winB">Right wins</button>
+      </div>
+      <div class="hint" id="previewHint" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Suggested pairings <span class="count" id="pairCount">0</span></h2>
+      <div id="pairings"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="repair" class="ghost">Re-pair</button>
+        <div class="spacer"></div>
+        <div class="hint">Closest ratings first, avoiding tonight's rematches.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ STANDINGS ══ -->
+  <div data-panel="standings" class="hidden">
+    <div class="card">
+      <h2>Standings <span class="count" id="standCount">0</span></h2>
+      <div id="standings"></div>
+    </div>
+  </div>
+
+  <!-- ══ PLAYERS ══ -->
+  <div data-panel="players" class="hidden">
+    <div class="card">
+      <h2>Add player</h2>
+      <form id="addForm" class="row">
+        <input id="newName" placeholder="Name" required style="flex:1;min-width:150px" autocomplete="off">
+        <input id="newRating" type="number" placeholder="1200" inputmode="numeric" style="width:100px">
+        <button type="submit" class="primary">Add</button>
+      </form>
+      <div class="hint" style="margin-top:9px">
+        Leave the rating blank to start at <b id="defStart">1200</b>. Set it only if you're
+        carrying over a known rating from elsewhere.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>All players <span class="count" id="playerCount">0</span></h2>
+      <div id="playerList"></div>
+    </div>
+
+    <div class="card">
+      <h2>Data</h2>
+      <div class="row">
+        <button id="exportBtn">Export JSON</button>
+        <button id="importBtn">Import</button>
+        <input type="file" id="importFile" accept="application/json" class="hidden">
+        <div class="spacer"></div>
+        <button id="wipeBtn" class="ghost">Erase all</button>
+      </div>
+      <div class="hint" style="margin-top:9px">
+        Everything lives in this browser only. Export regularly — clearing site data wipes it.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Rating settings</h2>
+      <div class="row">
+        <div style="flex:1;min-width:120px">
+          <label for="setStart">Starting rating</label>
+          <input id="setStart" type="number" inputmode="numeric">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label for="setKNew">K &mdash; provisional</label>
+          <input id="setKNew" type="number" inputmode="numeric">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label for="setK">K &mdash; established</label>
+          <input id="setK" type="number" inputmode="numeric">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label for="setProv">Provisional games</label>
+          <input id="setProv" type="number" inputmode="numeric">
+        </div>
+      </div>
+      <div class="hint" style="margin-top:9px">
+        K is how far one game can move a rating. New players use the larger K so they
+        find their level fast, then settle onto the smaller one. Changing these
+        recalculates every rating from the full match history.
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ HISTORY ══ -->
+  <div data-panel="history" class="hidden">
+    <div class="card">
+      <h2>Match history <span class="count" id="matchCount">0</span></h2>
+      <div id="history"></div>
+    </div>
+  </div>
+
+</div>
+
+<dialog id="playerModal"><div class="modal-body" id="playerModalBody"></div></dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Data model
+
+   Matches are the source of truth. Ratings are DERIVED — recomputed by
+   replaying the whole match log in order. Nothing ever mutates a rating in
+   place, so deleting a mis-entered result at a loud bar is safe: the ladder
+   simply rebuilds as if it never happened.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const KEY = 'chessladder.v1';
+const $ = id => document.getElementById(id);
+
+const DEFAULTS = { start: 1200, kNew: 40, k: 20, provGames: 10 };
+
+let db = load();
+let tab = 'night';
+let pairings = [];
+
+function load() {
+  let d;
+  try { d = JSON.parse(localStorage.getItem(KEY)); } catch { d = null; }
+  if (!d) d = { version: 1, players: [], matches: [], settings: { ...DEFAULTS } };
+  d.settings = { ...DEFAULTS, ...(d.settings || {}) };
+  d.players ||= [];
+  d.matches ||= [];
+  return d;
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(db)); }
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const byId = id => db.players.find(p => p.id === id);
+
+/* ── Elo ──────────────────────────────────────────────────────────────────── */
+
+// Probability that A scores against B. The 400 constant is what makes a
+// 400-point gap a 10:1 favourite — that's the whole scale.
+function expected(ra, rb) {
+  return 1 / (1 + Math.pow(10, (rb - ra) / 400));
+}
+
+function kFor(gamesPlayed) {
+  const s = db.settings;
+  return gamesPlayed < s.provGames ? s.kNew : s.k;
+}
+
+// Replay every match in chronological order to produce current ratings.
+// Returns a map id -> { rating, games, wins, losses, draws, peak, history }.
+function computeStandings() {
+  const s = db.settings;
+  const st = {};
+  db.players.forEach(p => {
+    st[p.id] = {
+      rating: p.seed ?? s.start, games: 0, wins: 0, losses: 0, draws: 0,
+      peak: p.seed ?? s.start, history: []
+    };
+  });
+
+  const ordered = db.matches.slice().sort((a, b) => a.at.localeCompare(b.at));
+  for (const m of ordered) {
+    const A = st[m.a], B = st[m.b];
+    if (!A || !B) continue;               // player was deleted; skip the match
+
+    const ra = A.rating, rb = B.rating;
+    const ka = kFor(A.games), kb = kFor(B.games);
+    const sa = m.result === 'a' ? 1 : m.result === 'b' ? 0 : 0.5;
+
+    const na = ra + ka * (sa - expected(ra, rb));
+    const nb = rb + kb * ((1 - sa) - expected(rb, ra));
+
+    // Keep full precision internally and round only for display. Rounding here
+    // would leak a fraction of a point per game, and over a season that
+    // silently inflates the whole pool.
+    A.rating = na;
+    B.rating = nb;
+    A.games++; B.games++;
+    if (sa === 1)      { A.wins++;  B.losses++; }
+    else if (sa === 0) { A.losses++; B.wins++;  }
+    else               { A.draws++; B.draws++;  }
+
+    A.peak = Math.max(A.peak, A.rating);
+    B.peak = Math.max(B.peak, B.rating);
+
+    // Deltas are derived from the rounded values so the numbers on screen
+    // always add up to the numbers on screen.
+    const da = Math.round(na) - Math.round(ra), dbb = Math.round(nb) - Math.round(rb);
+    A.history.push({ at: m.at, id: m.id, rating: Math.round(na), delta: da, opp: m.b, score: sa });
+    B.history.push({ at: m.at, id: m.id, rating: Math.round(nb), delta: dbb, opp: m.a, score: 1 - sa });
+
+    m._d = { a: da, b: dbb };   // for display only
+  }
+  return st;
+}
+
+let standings = computeStandings();
+const refresh = () => { standings = computeStandings(); };
+
+const isProvisional = id => (standings[id]?.games ?? 0) < db.settings.provGames;
+
+/* ── Helpers ──────────────────────────────────────────────────────────────── */
+
+function showToast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 2400);
+}
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+}
+const todayKey = () => new Date().toISOString().slice(0, 10);
+const isToday = iso => iso.slice(0, 10) === todayKey();
+
+function fmtTime(iso) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return isToday(iso) ? fmtTime(iso)
+    : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+function deltaHtml(d) {
+  const cls = d > 0 ? 'up' : d < 0 ? 'down' : 'flat';
+  return `<span class="delta ${cls}">${d > 0 ? '+' : ''}${d}</span>`;
+}
+
+/* ── Sorted view ──────────────────────────────────────────────────────────── */
+// Sort on the true value, present the rounded one.
+function ranked() {
+  return db.players
+    .map(p => ({ ...p, ...standings[p.id] }))
+    .sort((x, y) => y.rating - x.rating || x.name.localeCompare(y.name))
+    .map(p => ({ ...p, rating: Math.round(p.rating), peak: Math.round(p.peak) }));
+}
+const shown = id => Math.round(standings[id].rating);
+
+/* ── Pairings ─────────────────────────────────────────────────────────────── */
+
+// Greedy closest-rating pairing, with a heavy penalty on anyone you've already
+// played tonight. A rematch costs 500 rating-points of "distance", so it only
+// happens when there's genuinely nobody else left.
+function buildPairings() {
+  const here = db.players.filter(p => p.here);
+  const playedTonight = {};
+  db.matches.filter(m => isToday(m.at)).forEach(m => {
+    (playedTonight[m.a] ||= {});
+    (playedTonight[m.b] ||= {});
+    playedTonight[m.a][m.b] = (playedTonight[m.a][m.b] || 0) + 1;
+    playedTonight[m.b][m.a] = (playedTonight[m.b][m.a] || 0) + 1;
+  });
+  const gamesTonight = id =>
+    db.matches.filter(m => isToday(m.at) && (m.a === id || m.b === id)).length;
+
+  let pool = here.map(p => ({ ...p, rating: shown(p.id) }))
+                 .sort((a, b) => b.rating - a.rating);
+
+  // Odd one out sits: give the bye to whoever has already played the most
+  // tonight, so the person who just arrived gets a game.
+  let bye = null;
+  if (pool.length % 2 === 1) {
+    bye = pool.slice().sort((a, b) =>
+      gamesTonight(b.id) - gamesTonight(a.id) || a.rating - b.rating)[0];
+    pool = pool.filter(p => p.id !== bye.id);
+  }
+
+  const out = [];
+  while (pool.length >= 2) {
+    const a = pool.shift();
+    let best = 0, bestCost = Infinity;
+    pool.forEach((cand, i) => {
+      const rematch = playedTonight[a.id]?.[cand.id] || 0;
+      const cost = Math.abs(a.rating - cand.rating) + rematch * 500;
+      if (cost < bestCost) { bestCost = cost; best = i; }
+    });
+    const b = pool.splice(best, 1)[0];
+    out.push({ a, b, gap: Math.abs(a.rating - b.rating), rematch: !!playedTonight[a.id]?.[b.id] });
+  }
+  return { pairs: out, bye };
+}
+
+/* ── Recording results ────────────────────────────────────────────────────── */
+
+function recordMatch(aId, bId, result) {
+  if (!aId || !bId || aId === bId) { showToast('Pick two different players'); return; }
+  db.matches.push({ id: uid(), at: new Date().toISOString(), a: aId, b: bId, result });
+
+  const before = { a: shown(aId), b: shown(bId) };
+  refresh();
+  const after = { a: shown(aId), b: shown(bId) };
+  save();
+  renderAll();
+
+  const A = byId(aId), B = byId(bId);
+  const da = after.a - before.a, dbb = after.b - before.b;
+  showToast(
+    result === 'draw'
+      ? `Draw — ${A.name} ${da >= 0 ? '+' : ''}${da}, ${B.name} ${dbb >= 0 ? '+' : ''}${dbb}`
+      : `${result === 'a' ? A.name : B.name} wins — ${A.name} ${da >= 0 ? '+' : ''}${da}, ${B.name} ${dbb >= 0 ? '+' : ''}${dbb}`
+  );
+}
+
+function deleteMatch(id) {
+  db.matches = db.matches.filter(m => m.id !== id);
+  refresh(); save(); renderAll();
+  showToast('Match removed — ratings rebuilt');
+}
+
+/* ── Rendering ────────────────────────────────────────────────────────────── */
+
+function renderHere() {
+  const list = db.players.slice().sort((a, b) =>
+    (standings[b.id].rating - standings[a.id].rating) || a.name.localeCompare(b.name));
+  $('hereCount').textContent = db.players.filter(p => p.here).length;
+
+  if (!list.length) {
+    $('hereChips').innerHTML = '<div class="hint">No players yet — add some on the Players tab.</div>';
+    $('hereHint').textContent = '';
+    return;
+  }
+  $('hereChips').innerHTML = list.map(p => `
+    <span class="chip ${p.here ? 'on' : ''}" data-here="${p.id}">
+      ${esc(p.name)} <span class="r">${shown(p.id)}</span>
+    </span>`).join('');
+  const n = db.players.filter(p => p.here).length;
+  $('hereHint').textContent = n
+    ? `${n} here. Tap to toggle — only these players get paired.`
+    : 'Tap the people who showed up tonight.';
+}
+
+function renderSelects() {
+  const opts = ranked().map(p =>
+    `<option value="${p.id}">${esc(p.name)} (${p.rating})</option>`).join('');
+  const a = $('pA'), b = $('pB');
+  const keepA = a.value, keepB = b.value;
+  a.innerHTML = opts; b.innerHTML = opts;
+  if (keepA) a.value = keepA;
+  if (keepB) b.value = keepB;
+  else if (b.options.length > 1) b.selectedIndex = 1;
+  updatePreview();
+}
+
+// Show the stakes before the game is recorded — what each side stands to gain.
+function updatePreview() {
+  const a = $('pA').value, b = $('pB').value;
+  const ok = a && b && a !== b;
+  ['winA', 'winB', 'drawBtn'].forEach(id => $(id).disabled = !ok);
+  if (!ok) { $('previewHint').textContent = a && a === b ? 'Pick two different players.' : ''; return; }
+
+  const A = standings[a], B = standings[b];
+  const e = expected(A.rating, B.rating);
+  const ka = kFor(A.games);
+  const win = Math.round(ka * (1 - e)), loss = Math.round(ka * (0 - e));
+  $('previewHint').innerHTML =
+    `${esc(byId(a).name)} is a <b>${Math.round(e * 100)}%</b> favourite. ` +
+    `Winning is worth ${deltaHtml(win)}, losing ${deltaHtml(loss)}.`;
+}
+
+function renderPairings() {
+  const { pairs, bye } = buildPairings();
+  pairings = pairs;
+  $('pairCount').textContent = pairs.length;
+
+  if (!pairs.length) {
+    $('pairings').innerHTML =
+      '<div class="empty">Mark at least two people as here and they\'ll be paired by rating.</div>';
+    return;
+  }
+  $('pairings').innerHTML = pairs.map((p, i) => `
+    <div class="pair">
+      <div class="side"><div class="nm">${esc(p.a.name)}</div><div class="gap">${p.a.rating}</div></div>
+      <div><div class="vs">vs</div><div class="gap" style="text-align:center">${p.gap}</div></div>
+      <div class="side b"><div class="nm">${esc(p.b.name)}</div><div class="gap">${p.b.rating}</div></div>
+      <button data-seat="${i}">Seat</button>
+    </div>`).join('')
+    + (bye ? `<div class="hint" style="margin-top:8px"><b>${esc(bye.name)}</b> sits this round.</div>` : '')
+    + (pairs.some(p => p.rematch)
+        ? '<div class="hint" style="margin-top:6px">A rematch was unavoidable with this many players.</div>' : '');
+}
+
+function renderStandings() {
+  const list = ranked();
+  $('standCount').textContent = list.length;
+  if (!list.length) { $('standings').innerHTML = '<div class="empty">No players yet.</div>'; return; }
+
+  $('standings').innerHTML = `
+    <table>
+      <thead><tr>
+        <th></th><th>Player</th><th class="num">Rating</th>
+        <th class="num">W&ndash;L&ndash;D</th><th class="num">Games</th>
+      </tr></thead>
+      <tbody>${list.map((p, i) => `
+        <tr class="clickable" data-player="${p.id}">
+          <td class="rank">${i + 1}</td>
+          <td>${p.here ? '<span class="here"></span> ' : ''}${esc(p.name)}</td>
+          <td class="num rating">${p.rating}${isProvisional(p.id) ? ' <span class="prov">?</span>' : ''}</td>
+          <td class="num wld">${p.wins}&ndash;${p.losses}&ndash;${p.draws}</td>
+          <td class="num wld">${p.games}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="hint" style="margin-top:10px">
+      <b>?</b> marks a provisional rating &mdash; fewer than ${db.settings.provGames} games,
+      so treat it as a rough guess rather than a real placement.
+    </div>`;
+}
+
+function renderPlayers() {
+  const list = ranked();
+  $('playerCount').textContent = list.length;
+  if (!list.length) { $('playerList').innerHTML = '<div class="empty">No players yet.</div>'; return; }
+  $('playerList').innerHTML = `
+    <table><tbody>${list.map(p => `
+      <tr>
+        <td>${esc(p.name)}</td>
+        <td class="num rating">${p.rating}</td>
+        <td class="num wld">${p.games} games</td>
+        <td class="num" style="width:1%">
+          <button class="ghost" data-rename="${p.id}">Rename</button>
+          <button class="ghost" data-del-player="${p.id}">Delete</button>
+        </td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function renderHistory() {
+  const list = db.matches.slice().sort((a, b) => b.at.localeCompare(a.at));
+  $('matchCount').textContent = list.length;
+  if (!list.length) { $('history').innerHTML = '<div class="empty">No games recorded yet.</div>'; return; }
+
+  $('history').innerHTML = list.slice(0, 200).map(m => {
+    const A = byId(m.a), B = byId(m.b);
+    if (!A || !B) return '';
+    const d = m._d || { a: 0, b: 0 };
+    const nameA = m.result === 'a' ? `<span class="win">${esc(A.name)}</span>` : `<span class="lose">${esc(A.name)}</span>`;
+    const nameB = m.result === 'b' ? `<span class="win">${esc(B.name)}</span>` : `<span class="lose">${esc(B.name)}</span>`;
+    const mid = m.result === 'draw' ? '&frac12;&ndash;&frac12;' : (m.result === 'a' ? '1&ndash;0' : '0&ndash;1');
+    return `
+      <div class="match">
+        <div class="when">${fmtDate(m.at)}</div>
+        <div class="desc">${nameA} ${mid} ${nameB}
+          <span class="gap">${deltaHtml(d.a)} / ${deltaHtml(d.b)}</span>
+        </div>
+        <button class="ghost" data-del-match="${m.id}">Undo</button>
+      </div>`;
+  }).join('');
+}
+
+function renderSettings() {
+  $('setStart').value = db.settings.start;
+  $('setKNew').value  = db.settings.kNew;
+  $('setK').value     = db.settings.k;
+  $('setProv').value  = db.settings.provGames;
+  $('defStart').textContent = db.settings.start;
+}
+
+function renderAll() {
+  renderHere(); renderSelects(); renderPairings();
+  renderStandings(); renderPlayers(); renderHistory(); renderSettings();
+}
+
+/* ── Player detail ────────────────────────────────────────────────────────── */
+function openPlayer(id) {
+  const p = byId(id), s = standings[id];
+  const recent = s.history.slice(-12).reverse();
+  const opp = {};
+  s.history.forEach(h => {
+    opp[h.opp] ||= { w: 0, l: 0, d: 0 };
+    if (h.score === 1) opp[h.opp].w++; else if (h.score === 0) opp[h.opp].l++; else opp[h.opp].d++;
+  });
+
+  $('playerModalBody').innerHTML = `
+    <h3>${esc(p.name)}</h3>
+    <div class="hint" style="margin-bottom:14px">
+      Rating <b class="rating">${Math.round(s.rating)}</b>${isProvisional(id) ? ' (provisional)' : ''}
+      &middot; peak ${Math.round(s.peak)} &middot; ${s.games} games &middot; ${s.wins}W ${s.losses}L ${s.draws}D
+    </div>
+    ${recent.length ? `<table><tbody>${recent.map(h => `
+      <tr>
+        <td class="when" style="font-size:.75rem;color:var(--text-faint)">${fmtDate(h.at)}</td>
+        <td>${h.score === 1 ? 'beat' : h.score === 0 ? 'lost to' : 'drew'} ${esc(byId(h.opp)?.name ?? '—')}</td>
+        <td class="num">${deltaHtml(h.delta)}</td>
+        <td class="num rating">${h.rating}</td>
+      </tr>`).join('')}</tbody></table>`
+      : '<div class="hint">No games yet.</div>'}
+    <div class="row" style="margin-top:16px">
+      <div class="spacer"></div>
+      <button id="closeModal" class="primary">Close</button>
+    </div>`;
+  $('playerModal').showModal();
+  $('closeModal').onclick = () => $('playerModal').close();
+}
+
+/* ── Events ───────────────────────────────────────────────────────────────── */
+
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll('[data-panel]').forEach(p =>
+    p.classList.toggle('hidden', p.dataset.panel !== tab));
+}));
+
+$('hereChips').addEventListener('click', e => {
+  const c = e.target.closest('[data-here]');
+  if (!c) return;
+  const p = byId(c.dataset.here);
+  p.here = !p.here;
+  save(); renderHere(); renderPairings(); renderStandings();
+});
+
+$('pA').addEventListener('change', updatePreview);
+$('pB').addEventListener('change', updatePreview);
+$('winA').addEventListener('click', () => recordMatch($('pA').value, $('pB').value, 'a'));
+$('winB').addEventListener('click', () => recordMatch($('pA').value, $('pB').value, 'b'));
+$('drawBtn').addEventListener('click', () => recordMatch($('pA').value, $('pB').value, 'draw'));
+
+$('repair').addEventListener('click', () => { renderPairings(); showToast('Re-paired'); });
+
+$('pairings').addEventListener('click', e => {
+  const b = e.target.closest('[data-seat]');
+  if (!b) return;
+  const p = pairings[+b.dataset.seat];
+  $('pA').value = p.a.id; $('pB').value = p.b.id;
+  updatePreview();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  showToast(`${p.a.name} vs ${p.b.name} — ready to record`);
+});
+
+$('addForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = $('newName').value.trim();
+  if (!name) return;
+  if (db.players.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+    showToast('Someone already has that name'); return;
+  }
+  const seed = parseInt($('newRating').value, 10);
+  db.players.push({
+    id: uid(), name, here: true,
+    seed: isNaN(seed) ? undefined : seed,
+    created: new Date().toISOString()
+  });
+  $('newName').value = ''; $('newRating').value = '';
+  refresh(); save(); renderAll();
+  showToast(`${name} added`);
+  $('newName').focus();
+});
+
+$('playerList').addEventListener('click', e => {
+  const ren = e.target.closest('[data-rename]');
+  if (ren) {
+    const p = byId(ren.dataset.rename);
+    const name = prompt('New name', p.name);
+    if (name && name.trim()) { p.name = name.trim(); save(); renderAll(); }
+    return;
+  }
+  const del = e.target.closest('[data-del-player]');
+  if (del) {
+    const p = byId(del.dataset.delPlayer);
+    const n = db.matches.filter(m => m.a === p.id || m.b === p.id).length;
+    if (!confirm(`Delete ${p.name}?` + (n ? `\n\nTheir ${n} game${n === 1 ? '' : 's'} will also be removed and everyone else's rating recalculated.` : ''))) return;
+    db.matches = db.matches.filter(m => m.a !== p.id && m.b !== p.id);
+    db.players = db.players.filter(x => x.id !== p.id);
+    refresh(); save(); renderAll();
+    showToast(`${p.name} deleted`);
+  }
+});
+
+$('standings').addEventListener('click', e => {
+  const r = e.target.closest('[data-player]');
+  if (r) openPlayer(r.dataset.player);
+});
+
+$('history').addEventListener('click', e => {
+  const d = e.target.closest('[data-del-match]');
+  if (d && confirm('Remove this game? Every rating after it will be recalculated.')) {
+    deleteMatch(d.dataset.delMatch);
+  }
+});
+
+['setStart', 'setKNew', 'setK', 'setProv'].forEach(id => {
+  $(id).addEventListener('change', () => {
+    const map = { setStart: 'start', setKNew: 'kNew', setK: 'k', setProv: 'provGames' };
+    const v = parseInt($(id).value, 10);
+    if (isNaN(v) || v < 0) { renderSettings(); return; }
+    db.settings[map[id]] = v;
+    refresh(); save(); renderAll();
+    showToast('Ratings recalculated');
+  });
+});
+
+/* ── Export / import ──────────────────────────────────────────────────────── */
+$('exportBtn').addEventListener('click', () => {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = `chess-ladder-${todayKey()}.json`; a.click();
+  URL.revokeObjectURL(url);
+});
+
+$('importBtn').addEventListener('click', () => $('importFile').click());
+$('importFile').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (!Array.isArray(d.players) || !Array.isArray(d.matches)) throw new Error('bad shape');
+      if (!confirm(`Replace everything with ${d.players.length} players and ${d.matches.length} games?`)) return;
+      db = { version: 1, players: d.players, matches: d.matches,
+             settings: { ...DEFAULTS, ...(d.settings || {}) } };
+      refresh(); save(); renderAll();
+      showToast('Imported');
+    } catch { showToast('Could not read that file'); }
+  };
+  r.readAsText(f);
+  e.target.value = '';
+});
+
+$('wipeBtn').addEventListener('click', () => {
+  if (!confirm('Erase every player and game? This cannot be undone.')) return;
+  if (!confirm('Really erase everything? Export first if you want a backup.')) return;
+  db = { version: 1, players: [], matches: [], settings: { ...DEFAULTS } };
+  refresh(); save(); renderAll();
+  showToast('Erased');
+});
+
+renderAll();
+</script>
+</body>
+</html>

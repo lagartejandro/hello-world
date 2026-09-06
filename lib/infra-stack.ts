@@ -62,6 +62,8 @@ function handler(event) {
     event.request.uri = '/diet-stack.html';
   } else if (uri === '/brew' || uri === '/brew/') {
     event.request.uri = '/brew.html';
+  } else if (uri === '/chess' || uri === '/chess/') {
+    event.request.uri = '/chess.html';
   }
   return event.request;
 }
