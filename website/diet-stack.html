@@ -327,7 +327,8 @@
 
   <header class="header">
     <h1>Diet Stack</h1>
-    <p>Select your diets, then search any food to see if it's compliant.</p>
+    <p>Select your diets, then search any food to see if it's compliant.
+       Traditional Chinese Medicine properties are shown for every food.</p>
   </header>
 
   <div class="section-label">Your diets</div>
@@ -361,26 +362,45 @@
 <script>
 // ── Diet definitions ─────────────────────────────────────────────────────────
 const DIETS = [
+  // Exclusions and intolerances
   { key: 'low_fodmap',      label: 'Low FODMAP',    color: '#2563eb' },
-  { key: 'paleo',           label: 'Paleo',         color: '#92400e' },
-  { key: 'vegetarian',      label: 'Vegetarian',    color: '#16a34a' },
-  { key: 'pescatarian',     label: 'Pescatarian',   color: '#0891b2' },
-  { key: 'vegan',           label: 'Vegan',         color: '#065f46' },
-  { key: 'tcm',             label: 'TCM',           color: '#7c3aed' },
+  { key: 'gluten_free',     label: 'Gluten Free',   color: '#ca8a04' },
+  { key: 'dairy_free',      label: 'Dairy Free',    color: '#64748b' },
+  { key: 'nut_free',        label: 'Nut Free',      color: '#78350f' },
   { key: 'seed_oil_free',   label: 'Seed Oil Free', color: '#d97706' },
+  { key: 'halal',           label: 'Halal',         color: '#047857' },
+  // Plant-forward
+  { key: 'pescatarian',     label: 'Pescatarian',   color: '#0891b2' },
+  { key: 'vegetarian',      label: 'Vegetarian',    color: '#16a34a' },
+  { key: 'vegan',           label: 'Vegan',         color: '#065f46' },
+  // Whole-food frameworks
+  { key: 'mediterranean',   label: 'Mediterranean', color: '#0369a1' },
+  { key: 'paleo',           label: 'Paleo',         color: '#92400e' },
+  { key: 'whole30',         label: 'Whole30',       color: '#0d9488' },
+  { key: 'aip',             label: 'AIP',           color: '#be185d' },
+  // Low carb
+  { key: 'atkins',          label: 'Atkins',        color: '#a855f7' },
+  { key: 'keto',            label: 'Keto',          color: '#7c3aed' },
+  { key: 'carnivore',       label: 'Carnivore',     color: '#b91c1c' },
 ];
 
 // Diet A's foods ⊂ Diet B's foods → A is stricter, B is redundant when A is active
 // ENCOMPASSES[strict] = [redundant diets to auto-deselect]
+// Derived by checking real subset relationships in foods.json, not by eye.
 const ENCOMPASSES = {
-  'vegan':       ['vegetarian', 'pescatarian'],
+  'vegan':       ['vegetarian', 'pescatarian', 'dairy_free'],
   'vegetarian':  ['pescatarian'],
+  'keto':        ['atkins'],
+  'aip':         ['paleo', 'seed_oil_free', 'gluten_free', 'nut_free'],
+  'paleo':       ['seed_oil_free', 'gluten_free'],
+  'whole30':     ['seed_oil_free', 'gluten_free'],
+  'carnivore':   ['gluten_free', 'nut_free'],
 };
 
-// True conflicts: intersection of allowed foods is empty
-// (none in the current diet set — built for future extension)
+// True conflicts: no meaningful food satisfies both.
+// Vegan ∩ Carnivore leaves only water and salt.
 const CONFLICTS = [
-  // e.g. ['carnivore', 'vegan']
+  ['carnivore', 'vegan'],
 ];
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -441,32 +461,32 @@ function toggleDiet(key) {
   // Add the diet
   selectedDiets.add(key);
 
-  // Apply encompass logic — remove redundant diets
-  const removed = [];
+  // Apply encompass logic — remove redundant diets. Record which strict diet
+  // covered each removal, since it isn't necessarily the one just added.
+  const label = k => DIETS.find(d => d.key === k)?.label ?? k;
+  const removed = [];   // [{ diet, coveredBy }]
   for (const [strict, redundants] of Object.entries(ENCOMPASSES)) {
-    if (selectedDiets.has(strict)) {
-      for (const r of redundants) {
-        if (selectedDiets.has(r)) {
-          selectedDiets.delete(r);
-          removed.push(DIETS.find(d => d.key === r)?.label);
-        }
+    if (!selectedDiets.has(strict)) continue;
+    for (const r of redundants) {
+      if (selectedDiets.has(r)) {
+        selectedDiets.delete(r);
+        removed.push({ diet: r, coveredBy: strict });
       }
     }
   }
 
   if (removed.length > 0) {
-    const strictLabel = DIETS.find(d => d.key === key)?.label;
-    // If the newly added diet was itself redundant (edge case: adding Pescatarian
-    // when Vegan is active → Vegan encompasses Pescatarian → Pescatarian gets removed)
-    if (!selectedDiets.has(key)) {
-      const coveringDiet = Object.entries(ENCOMPASSES)
-        .find(([, reds]) => reds.includes(key) && selectedDiets.has(key.substr(0,0) || '') || reds.includes(key));
-      const coveringLabel = DIETS.find(d =>
-        (ENCOMPASSES[d.key] || []).includes(key) && selectedDiets.has(d.key)
-      )?.label;
-      showToast(`${strictLabel} is already covered by ${coveringLabel ?? 'a stricter diet'}.`);
+    const self = removed.find(r => r.diet === key);
+    if (self) {
+      // The diet just added was itself redundant, e.g. adding Pescatarian
+      // while Vegan is active.
+      showToast(`${label(key)} is already covered by ${label(self.coveredBy)}.`);
     } else {
-      showToast(`Removed ${removed.join(' and ')} — already covered by ${strictLabel}.`);
+      const names = removed.map(r => label(r.diet));
+      const list = names.length > 1
+        ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1]
+        : names[0];
+      showToast(`Removed ${list} — already covered by ${label(removed[0].coveredBy)}.`);
     }
   }
 
@@ -510,6 +530,33 @@ function getTcmClass(prop) {
   return 'tcm-other';
 }
 
+// TCM is reference information, not a filter — every food shows it, always.
+function buildTcmRow(food) {
+  const tcmRow = document.createElement('div');
+  tcmRow.className = 'tcm-row';
+
+  const lbl = document.createElement('span');
+  lbl.className = 'tcm-label';
+  lbl.textContent = 'TCM';
+  tcmRow.appendChild(lbl);
+
+  (food.tcm_properties || []).forEach(prop => {
+    const tag = document.createElement('span');
+    tag.className = `tcm-tag ${getTcmClass(prop)}`;
+    tag.textContent = prop;
+    tcmRow.appendChild(tag);
+  });
+
+  if (food.tcm_notes) {
+    const notes = document.createElement('span');
+    notes.className = 'tcm-notes';
+    notes.textContent = food.tcm_notes;
+    tcmRow.appendChild(notes);
+  }
+
+  return tcmRow;
+}
+
 function renderFoodCard(food) {
   const activeDiets = DIETS.filter(d => selectedDiets.has(d.key));
   const card = document.createElement('div');
@@ -526,6 +573,7 @@ function renderFoodCard(food) {
     hint.style.cssText = 'font-size:0.8rem;color:var(--text-faint);';
     hint.textContent = 'Select diets above to see compliance.';
     card.appendChild(hint);
+    card.appendChild(buildTcmRow(food));
     return card;
   }
 
@@ -537,10 +585,7 @@ function renderFoodCard(food) {
 
   activeDiets.forEach(diet => {
     let pass, caveat;
-    if (diet.key === 'tcm') {
-      pass = !food.tcm_fail;
-      caveat = null;
-    } else if (diet.key === 'low_fodmap') {
+    if (diet.key === 'low_fodmap') {
       pass = food.low_fodmap;
       caveat = food.low_fodmap_caveat;
     } else {
@@ -573,32 +618,7 @@ function renderFoodCard(food) {
     card.appendChild(caveatsEl);
   }
 
-  // TCM row (if TCM selected)
-  if (selectedDiets.has('tcm') && food.tcm_properties && food.tcm_properties.length > 0) {
-    const tcmRow = document.createElement('div');
-    tcmRow.className = 'tcm-row';
-
-    const lbl = document.createElement('span');
-    lbl.className = 'tcm-label';
-    lbl.textContent = 'TCM';
-    tcmRow.appendChild(lbl);
-
-    food.tcm_properties.forEach(prop => {
-      const tag = document.createElement('span');
-      tag.className = `tcm-tag ${getTcmClass(prop)}`;
-      tag.textContent = prop;
-      tcmRow.appendChild(tag);
-    });
-
-    if (food.tcm_notes) {
-      const notes = document.createElement('span');
-      notes.className = 'tcm-notes';
-      notes.textContent = food.tcm_notes;
-      tcmRow.appendChild(notes);
-    }
-
-    card.appendChild(tcmRow);
-  }
+  card.appendChild(buildTcmRow(food));
 
   return card;
 }
