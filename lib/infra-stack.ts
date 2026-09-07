@@ -10,6 +10,8 @@ import { Construct } from 'constructs';
 
 interface InfraStackProps extends cdk.StackProps {
   domainName: string;
+  /** Host of the ladder HTTP API, served same-origin at /api/*. */
+  apiDomain: string;
 }
 
 export class InfraStack extends cdk.Stack {
@@ -79,6 +81,24 @@ function handler(event) {
           function: urlRewrite,
           eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
         }],
+      },
+      // -----------------------------------------------------------------------
+      // The ladder API, served same-origin so the page needs no CORS and pays
+      // no preflight on every sync.
+      //
+      // Caching MUST stay disabled: a cached /api/state would hand one
+      // member's ladder to the next visitor. ALL_VIEWER_EXCEPT_HOST_HEADER
+      // forwards the Authorization header while leaving Host matching
+      // execute-api — forward the real Host and the API rejects everything.
+      // -----------------------------------------------------------------------
+      additionalBehaviors: {
+        '/api/*': {
+          origin: new origins.HttpOrigin(props.apiDomain),
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        },
       },
       domainNames: [domainName, `www.${domainName}`],
       certificate: this.certificate,

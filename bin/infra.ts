@@ -14,11 +14,11 @@ const env = {
   region: 'us-east-1',
 };
 
-// Accounts and data for the chess ladder. InfraStack will route /api/* at the
-// ladder API in the next phase.
+// Accounts and data for the chess ladder. InfraStack serves the ladder API
+// same-origin at /api/*, so the order here is Auth -> Ladder -> Infra.
 const authStack = new AuthStack(app, 'AuthStack', { env });
 
-new LadderStack(app, 'LadderStack', {
+const ladderStack = new LadderStack(app, 'LadderStack', {
   env,
   userPool: authStack.userPool,
   userPoolClient: authStack.userPoolClient,
@@ -28,6 +28,7 @@ new LadderStack(app, 'LadderStack', {
 new InfraStack(app, 'InfraStack', {
   env,
   domainName: 'lagartejandro.com',
+  apiDomain: ladderStack.apiDomain,
 });
 
 const trackerStack = new RedditTrackerStack(app, 'RedditTrackerStack', { env });
