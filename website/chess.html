@@ -457,6 +457,10 @@
              maxlength="6" pattern="[0-9]{6}" required placeholder="000000">
     </div>
     <div class="auth-err hidden" id="authErr2"></div>
+    <div class="hint">
+      No code after a minute? Check spam — it comes from
+      <b>no-reply@verificationemail.com</b>, which mail providers often filter.
+    </div>
     <div class="row">
       <button type="button" class="ghost" id="authBack">Back</button>
       <div class="spacer"></div>
@@ -1328,6 +1332,17 @@ $('authStep1').addEventListener('submit', async e => {
       $('authSentTo').textContent = `We sent a code to ${email}. Enter it to finish creating your account.`;
     } else {
       const r = await startSignIn(email);
+      // Cognito refuses to say whether an account exists (preventUserExistence
+      // Errors), so for an unknown address it hands back a decoy challenge
+      // rather than an error. Anything other than EMAIL_OTP means no code was
+      // sent, and advancing would promise an email that is never coming.
+      if (r.ChallengeName !== 'EMAIL_OTP') {
+        showErr($('authErr1'),
+          "We couldn't start a sign-in for that address. If you're new here, " +
+          "create an account — you'll need the club's invite code.");
+        $('authSwitch').focus();
+        return;
+      }
       pending = { email, session: r.Session, confirming: false };
       const dest = r.ChallengeParameters?.CODE_DELIVERY_DESTINATION;
       $('authSentTo').textContent = `We sent a code to ${dest || email}.`;
