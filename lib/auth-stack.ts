@@ -9,6 +9,8 @@ import { Construct } from 'constructs';
 export class AuthStack extends cdk.Stack {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
+  // Exposed so the ladder API can derive today's code for the operator.
+  public readonly inviteSecret: secretsmanager.Secret;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -150,6 +152,7 @@ export class AuthStack extends cdk.Stack {
 
     this.userPool = userPool;
     this.userPoolClient = userPoolClient;
+    this.inviteSecret = inviteSecret;
 
     new cdk.CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId });
     new cdk.CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId });
