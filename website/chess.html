@@ -210,6 +210,57 @@
 
   .hidden { display: none !important; }
 
+  /* ── Account bar ── */
+  .acct { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+  .acct .who {
+    font-size: 0.8rem; color: var(--text-muted);
+    max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .badge-op {
+    font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 2px 7px; border-radius: var(--radius-xs);
+    background: var(--accent-soft); color: var(--accent);
+  }
+
+  /* ── Sync status ── */
+  .sync {
+    font-size: 0.75rem; color: var(--text-faint);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .sync::before {
+    content: ''; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-faint);
+  }
+  .sync.ok::before      { background: var(--up); }
+  .sync.pending::before { background: var(--draw); }
+  .sync.offline::before { background: var(--down); }
+
+  /* ── Auth dialog ── */
+  .auth-step { display: flex; flex-direction: column; gap: 12px; }
+  .auth-step h3 { font-size: 1.05rem; font-weight: 600; }
+  .auth-err {
+    font-size: 0.82rem; color: var(--down); line-height: 1.5;
+  }
+  .auth-switch {
+    font-size: 0.8rem; color: var(--text-muted); text-align: center;
+  }
+  .auth-switch button {
+    border: none; background: none; color: var(--accent);
+    padding: 0; font-size: 0.8rem; text-decoration: underline; cursor: pointer;
+  }
+  .auth-switch button:hover { border-color: transparent; }
+  .otp {
+    font-size: 1.3rem; letter-spacing: 0.35em; text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Invite code display ── */
+  .invite {
+    font-size: 2rem; font-weight: 600; letter-spacing: 0.18em;
+    font-variant-numeric: tabular-nums; color: var(--accent);
+    text-align: center; padding: 6px 0;
+  }
+
   dialog {
     border: none; border-radius: var(--radius); padding: 0;
     background: var(--surface); color: var(--text);
@@ -224,26 +275,35 @@
 <div class="page">
 
   <div class="header">
-    <h1>Chess Ladder</h1>
-    <p>Club ratings for the room. Mark who's here, pair by rating, record results.</p>
+    <div class="row" style="align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <h1>Chess Ladder</h1>
+        <p id="headerSub">Club ratings for the room. Mark who's here, pair by rating, record results.</p>
+      </div>
+      <div class="acct">
+        <span class="sync hidden" id="syncPill"></span>
+        <span class="who hidden" id="whoAmI"></span>
+        <button id="authBtn" class="ghost">Sign in</button>
+      </div>
+    </div>
   </div>
 
   <div class="tabs">
-    <button class="tab active" data-tab="night">Tonight</button>
+    <button class="tab active" data-tab="night" data-op>Tonight</button>
     <button class="tab" data-tab="standings">Standings</button>
-    <button class="tab" data-tab="players">Players</button>
+    <button class="tab" data-tab="players" data-op>Players</button>
     <button class="tab" data-tab="history">History</button>
   </div>
 
   <!-- ══ TONIGHT ══ -->
   <div data-panel="night">
-    <div class="card">
+    <div class="card" data-op>
       <h2>Who's here <span class="count" id="hereCount">0</span></h2>
       <div class="chips" id="hereChips"></div>
       <div class="hint" id="hereHint" style="margin-top:10px"></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-op>
       <h2>Record a result</h2>
       <div class="row" style="margin-bottom:10px">
         <select id="pA" style="flex:1;min-width:130px"></select>
@@ -258,7 +318,7 @@
       <div class="hint" id="previewHint" style="margin-top:10px"></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-op>
       <h2>Suggested pairings <span class="count" id="pairCount">0</span></h2>
       <div id="pairings"></div>
       <div class="row" style="margin-top:10px">
@@ -279,7 +339,16 @@
 
   <!-- ══ PLAYERS ══ -->
   <div data-panel="players" class="hidden">
-    <div class="card">
+    <div class="card hidden" id="inviteCard">
+      <h2>Today's invite code</h2>
+      <div class="invite" id="inviteCode">&mdash;</div>
+      <div class="hint" style="text-align:center">
+        Anyone signing up today needs this. It changes at midnight, and
+        yesterday's still works — so a code handed out at 11pm doesn't die at 12.
+      </div>
+    </div>
+
+    <div class="card" data-op>
       <h2>Add player</h2>
       <form id="addForm" class="row">
         <input id="newName" placeholder="Name" required style="flex:1;min-width:150px" autocomplete="off">
@@ -292,12 +361,12 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" data-op>
       <h2>All players <span class="count" id="playerCount">0</span></h2>
       <div id="playerList"></div>
     </div>
 
-    <div class="card">
+    <div class="card" data-op>
       <h2>Data</h2>
       <div class="row">
         <button id="exportBtn">Export JSON</button>
@@ -306,12 +375,12 @@
         <div class="spacer"></div>
         <button id="wipeBtn" class="ghost">Erase all</button>
       </div>
-      <div class="hint" style="margin-top:9px">
+      <div class="hint" style="margin-top:9px" id="storageNote">
         Everything lives in this browser only. Export regularly — clearing site data wipes it.
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" data-op>
       <h2>Rating settings</h2>
       <div class="row">
         <div style="flex:1;min-width:120px">
@@ -350,6 +419,51 @@
 </div>
 
 <dialog id="playerModal"><div class="modal-body" id="playerModalBody"></div></dialog>
+
+<dialog id="authModal"><div class="modal-body">
+  <!-- Step 1: who are you -->
+  <form class="auth-step" id="authStep1">
+    <h3 id="authTitle">Sign in</h3>
+    <div class="hint" id="authBlurb">
+      We'll email you a code. No password to remember or lose.
+    </div>
+    <div>
+      <label for="authEmail">Email</label>
+      <input id="authEmail" type="email" required autocomplete="email" placeholder="you@example.com">
+    </div>
+    <div id="inviteWrap" class="hidden">
+      <label for="authInvite">Club invite code</label>
+      <input id="authInvite" placeholder="ask at the club" autocapitalize="characters" autocomplete="off">
+    </div>
+    <div class="auth-err hidden" id="authErr1"></div>
+    <div class="row">
+      <button type="button" class="ghost" data-auth-close>Cancel</button>
+      <div class="spacer"></div>
+      <button type="submit" class="primary" id="authGo">Continue</button>
+    </div>
+    <div class="auth-switch">
+      <span id="authSwitchText">New to the club?</span>
+      <button type="button" id="authSwitch">Create an account</button>
+    </div>
+  </form>
+
+  <!-- Step 2: the code from the email -->
+  <form class="auth-step hidden" id="authStep2">
+    <h3>Check your email</h3>
+    <div class="hint" id="authSentTo"></div>
+    <div>
+      <label for="authCode">6-digit code</label>
+      <input id="authCode" class="otp" inputmode="numeric" autocomplete="one-time-code"
+             maxlength="6" pattern="[0-9]{6}" required placeholder="000000">
+    </div>
+    <div class="auth-err hidden" id="authErr2"></div>
+    <div class="row">
+      <button type="button" class="ghost" id="authBack">Back</button>
+      <div class="spacer"></div>
+      <button type="submit" class="primary" id="authVerify">Verify</button>
+    </div>
+  </form>
+</div></dialog>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -364,25 +478,60 @@
    simply rebuilds as if it never happened.
    ══════════════════════════════════════════════════════════════════════════ */
 
-const KEY = 'chessladder.v1';
+/* Two modes, two keys.
+ *
+ *   signed out -> LOCAL_KEY, exactly as this page has always worked
+ *   signed in  -> CLUB_KEY, mirroring the club's shared ladder
+ *
+ * They are separate on purpose. One key with a mode flag would make "I signed
+ * in and it ate my ladder" a real possibility; two keys make it impossible.
+ * Signing out never destroys the club cache, and signing in never touches the
+ * data you already had. */
+const LOCAL_KEY = 'chessladder.v1';
+const CLUB_KEY  = 'chessladder.club.v1';
+const AUTH_KEY  = 'chessladder.auth.v1';
+
+const COGNITO_URL = 'https://cognito-idp.us-east-1.amazonaws.com/';
+const CLIENT_ID   = '1p0rotmbps76m0cnkdhv3tq8fg';
+
 const $ = id => document.getElementById(id);
 
 const DEFAULTS = { start: 1200, kNew: 40, k: 20, provGames: 10 };
 
-let db = load();
+let auth = loadAuth();                 // { accessToken, refreshToken, email } | null
+let me = null;                         // { sub, email, operator, playerId }
+let mode = auth ? 'club' : 'local';
 let tab = 'night';
 let pairings = [];
+let lastSynced = null;                 // server syncedAt, drives ?since=
+let syncState = 'idle';                // idle | pending | syncing | offline | error
+
+// Declared before the first load() below — load() calls storeKey(), and a
+// const is in its temporal dead zone until this line runs.
+const storeKey = () => (mode === 'club' ? CLUB_KEY : LOCAL_KEY);
+const canWrite = () => mode === 'local' || !!me?.operator;
+
+let db = load();
+
+function blank() {
+  return { version: 1, players: [], matches: [], settings: { ...DEFAULTS } };
+}
 
 function load() {
   let d;
-  try { d = JSON.parse(localStorage.getItem(KEY)); } catch { d = null; }
-  if (!d) d = { version: 1, players: [], matches: [], settings: { ...DEFAULTS } };
+  try { d = JSON.parse(localStorage.getItem(storeKey())); } catch { d = null; }
+  if (!d) d = blank();
   d.settings = { ...DEFAULTS, ...(d.settings || {}) };
   d.players ||= [];
   d.matches ||= [];
   return d;
 }
-function save() { localStorage.setItem(KEY, JSON.stringify(db)); }
+
+function persistLocal() { localStorage.setItem(storeKey(), JSON.stringify(db)); }
+
+// Still the only write in the app, still called from the same eight places.
+// In local mode scheduleSync() does nothing at all.
+function save() { persistLocal(); scheduleSync(); }
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const byId = id => db.players.find(p => p.id === id);
@@ -560,6 +709,244 @@ function deleteMatch(id) {
   db.matches = db.matches.filter(m => m.id !== id);
   refresh(); save(); renderAll();
   showToast('Match removed — ratings rebuilt');
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Auth — passwordless email OTP, straight to the Cognito API
+
+   No SDK and no build step: these calls are unauthenticated by design, so
+   there is nothing to sign and no library needed. Cognito still owns the
+   codes, the throttling and the account state — we only draw the form.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+function loadAuth() {
+  try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch { return null; }
+}
+function saveAuth(a) {
+  auth = a;
+  if (a) localStorage.setItem(AUTH_KEY, JSON.stringify(a));
+  else localStorage.removeItem(AUTH_KEY);
+}
+
+async function cognito(target, body) {
+  const res = await fetch(COGNITO_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-amz-json-1.1',
+      'X-Amz-Target': `AWSCognitoIdentityProviderService.${target}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // Cognito's own message is already written for a human — including the
+    // invite-code text from our own PreSignUp trigger. Pass it through rather
+    // than inventing a worse one.
+    throw new Error(data.message || data.__type || `Sign-in failed (${res.status})`);
+  }
+  return data;
+}
+
+const signUp = (email, inviteCode) => cognito('SignUp', {
+  ClientId: CLIENT_ID,
+  Username: email,
+  UserAttributes: [{ Name: 'email', Value: email }],
+  ClientMetadata: { inviteCode },
+});
+
+const confirmSignUp = (email, code) => cognito('ConfirmSignUp', {
+  ClientId: CLIENT_ID, Username: email, ConfirmationCode: code,
+});
+
+const startSignIn = (email) => cognito('InitiateAuth', {
+  ClientId: CLIENT_ID,
+  AuthFlow: 'USER_AUTH',
+  AuthParameters: { USERNAME: email, PREFERRED_CHALLENGE: 'EMAIL_OTP' },
+});
+
+const answerOtp = (email, code, session) => cognito('RespondToAuthChallenge', {
+  ClientId: CLIENT_ID,
+  ChallengeName: 'EMAIL_OTP',
+  Session: session,
+  ChallengeResponses: { USERNAME: email, EMAIL_OTP_CODE: code },
+});
+
+async function refreshTokens() {
+  if (!auth?.refreshToken) return false;
+  try {
+    const r = await cognito('InitiateAuth', {
+      ClientId: CLIENT_ID,
+      AuthFlow: 'REFRESH_TOKEN_AUTH',
+      AuthParameters: { REFRESH_TOKEN: auth.refreshToken },
+    });
+    saveAuth({ ...auth, accessToken: r.AuthenticationResult.AccessToken });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/* ── The API ──────────────────────────────────────────────────────────────── */
+
+// Same-origin, so no CORS and no preflight. One retry on 401 covers an
+// expired access token without bothering the user for a fresh code.
+async function api(path, options = {}, retry = true) {
+  const res = await fetch(path, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${auth?.accessToken ?? ''}`,
+    },
+  });
+  if (res.status === 401 && retry && await refreshTokens()) {
+    return api(path, options, false);
+  }
+  if (res.status === 401) { signOut('Session expired — sign in again'); throw new Error('Unauthorized'); }
+  if (!res.ok) throw new Error(`${options.method ?? 'GET'} ${path} failed (${res.status})`);
+  return res.json();
+}
+
+function signOut(msg) {
+  saveAuth(null);
+  me = null;
+  mode = 'local';
+  db = load();                       // back to the local ladder, untouched
+  refresh();
+  renderAll();
+  updateAccountUI();
+  if (msg) showToast(msg);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Sync
+
+   Matches are immutable and every row already carries a client-generated id,
+   so pushing is idempotent and a dropped response costs nothing but a retry.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let syncTimer = null;
+let syncing = false;
+
+function scheduleSync() {
+  if (mode !== 'club' || !me?.operator) return;   // members pull, never push
+  setSync('pending');
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(runSync, 2000);
+}
+
+function setSync(state) {
+  syncState = state;
+  updateAccountUI();
+}
+
+async function runSync() {
+  if (syncing || mode !== 'club' || !me?.operator) return;
+  if (!navigator.onLine) { setSync('offline'); return; }
+  syncing = true;
+  setSync('syncing');
+  try {
+    await api('/api/sync', {
+      method: 'POST',
+      body: JSON.stringify({
+        players: db.players,
+        matches: db.matches,
+        settings: db.settings,
+      }),
+    });
+    await pull();
+    setSync('idle');
+  } catch (err) {
+    setSync(navigator.onLine ? 'error' : 'offline');
+    console.warn('sync failed', err);
+  } finally {
+    syncing = false;
+  }
+}
+
+// Pull the club's state and merge it in. Server rows win only where they are
+// newer; anything queued locally survives until the next push.
+/**
+ * Merge a server response into a local ladder. Pure, so it can be tested
+ * without a network or a DOM.
+ *
+ * Players: the newer `updatedAt` wins, so an edit made offline is not undone
+ * by a stale row arriving from the server.
+ * Matches: immutable once written, so an existing one is never overwritten —
+ * two devices can only ever both add, never disagree.
+ * Tombstones: kept out of the ladder, because a deleted row that reappeared
+ * would resurrect a game the operator already undid.
+ */
+function mergeState(local, state) {
+  const byId = arr => Object.fromEntries((arr ?? []).map(x => [x.id, x]));
+  const players = byId(local.players), matches = byId(local.matches);
+
+  for (const p of state.players ?? []) {
+    const mine = players[p.id];
+    if (!mine || String(p.updatedAt ?? '') >= String(mine.updatedAt ?? '')) players[p.id] = p;
+  }
+  for (const m of state.matches ?? []) {
+    if (!matches[m.id]) matches[m.id] = m;
+  }
+
+  return {
+    version: 1,
+    players: Object.values(players).filter(p => !p.deleted),
+    matches: Object.values(matches).filter(m => !m.deleted),
+    settings: state.settings ? { ...DEFAULTS, ...state.settings } : local.settings,
+  };
+}
+
+async function pull() {
+  const state = await api('/api/state');
+  db = mergeState(db, state);
+  lastSynced = state.syncedAt;
+  persistLocal();
+  refresh();
+  renderAll();
+}
+
+window.addEventListener('online', () => { if (mode === 'club') runSync(); });
+window.addEventListener('offline', () => setSync('offline'));
+
+/* ── Account UI ───────────────────────────────────────────────────────────── */
+
+function updateAccountUI() {
+  const signedIn = mode === 'club' && !!auth;
+  $('authBtn').textContent = signedIn ? 'Sign out' : 'Sign in';
+  $('whoAmI').classList.toggle('hidden', !signedIn);
+  if (signedIn) {
+    $('whoAmI').innerHTML = esc(me?.email ?? auth.email ?? '') +
+      (me?.operator ? ' <span class="badge-op">operator</span>' : '');
+  }
+
+  // Only operators sync; for a member the pill would always read "idle" and
+  // mean nothing.
+  const pill = $('syncPill');
+  pill.classList.toggle('hidden', !(signedIn && me?.operator));
+  pill.className = 'sync' + (signedIn && me?.operator ? '' : ' hidden') + ' ' + ({
+    idle: 'ok', pending: 'pending', syncing: 'pending', offline: 'offline', error: 'offline',
+  }[syncState] ?? '');
+  pill.textContent = {
+    idle: 'Synced', pending: 'Saving…', syncing: 'Syncing…',
+    offline: 'Offline — saved here', error: 'Sync failed — saved here',
+  }[syncState] ?? '';
+
+  $('headerSub').textContent = signedIn
+    ? "The club's ladder, shared and backed up."
+    : 'Club ratings for the room. Mark who\'s here, pair by rating, record results.';
+
+  // Presentation only. The server returns 403 regardless of what is on screen.
+  const showOps = canWrite();
+  document.querySelectorAll('[data-op]').forEach(el => el.classList.toggle('hidden', !showOps));
+  $('inviteCard').classList.toggle('hidden', !(signedIn && me?.operator));
+
+  $('storageNote').textContent = signedIn
+    ? 'Saved to your club account and backed up. This device keeps a copy so it works offline.'
+    : 'Everything lives in this browser only. Export regularly — clearing site data wipes it.';
+
+  // If a member is looking at an operator-only tab, move them somewhere real.
+  if (!showOps && (tab === 'night' || tab === 'players')) selectTab('standings');
 }
 
 /* ── Rendering ────────────────────────────────────────────────────────────── */
@@ -749,12 +1136,14 @@ function openPlayer(id) {
 
 /* ── Events ───────────────────────────────────────────────────────────────── */
 
-document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => {
-  tab = b.dataset.tab;
-  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === b));
+function selectTab(name) {
+  tab = name;
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === name));
   document.querySelectorAll('[data-panel]').forEach(p =>
-    p.classList.toggle('hidden', p.dataset.panel !== tab));
-}));
+    p.classList.toggle('hidden', p.dataset.panel !== name));
+}
+document.querySelectorAll('.tab').forEach(b =>
+  b.addEventListener('click', () => selectTab(b.dataset.tab)));
 
 $('hereChips').addEventListener('click', e => {
   const c = e.target.closest('[data-here]');
@@ -880,7 +1269,198 @@ $('wipeBtn').addEventListener('click', () => {
   showToast('Erased');
 });
 
-renderAll();
+/* ════════════════════════════════════════════════════════════════════════════
+   Auth dialog
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let authMode = 'signin';    // 'signin' | 'signup'
+let pending = null;         // { email, session, confirming } between the steps
+
+function openAuth(which) {
+  authMode = which;
+  pending = null;
+  $('authStep1').classList.remove('hidden');
+  $('authStep2').classList.add('hidden');
+  $('authErr1').classList.add('hidden');
+  $('authErr2').classList.add('hidden');
+  $('authCode').value = '';
+  $('inviteWrap').classList.toggle('hidden', which !== 'signup');
+  $('authInvite').required = which === 'signup';
+  $('authTitle').textContent = which === 'signup' ? 'Create an account' : 'Sign in';
+  $('authBlurb').textContent = which === 'signup'
+    ? "You'll need the club's invite code, then we'll email you a verification code."
+    : "We'll email you a code. No password to remember or lose.";
+  $('authGo').textContent = which === 'signup' ? 'Create account' : 'Continue';
+  $('authSwitchText').textContent = which === 'signup' ? 'Already a member?' : 'New to the club?';
+  $('authSwitch').textContent = which === 'signup' ? 'Sign in instead' : 'Create an account';
+  $('authModal').showModal();
+  $('authEmail').focus();
+}
+
+const showErr = (el, msg) => { el.textContent = msg; el.classList.remove('hidden'); };
+const busy = (btn, on, label) => { btn.disabled = on; btn.textContent = on ? 'Working…' : label; };
+
+$('authBtn').addEventListener('click', () => {
+  if (mode === 'club' && auth) {
+    if (confirm("Sign out?\n\nThe club ladder stays on the server, and this device keeps its own separate local ladder.")) {
+      signOut('Signed out');
+    }
+  } else {
+    openAuth('signin');
+  }
+});
+$('authSwitch').addEventListener('click', () => openAuth(authMode === 'signup' ? 'signin' : 'signup'));
+document.querySelectorAll('[data-auth-close]').forEach(b =>
+  b.addEventListener('click', () => $('authModal').close()));
+$('authBack').addEventListener('click', () => openAuth(authMode));
+
+// Step 1 — sign up, or ask Cognito to send a sign-in code.
+$('authStep1').addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = $('authEmail').value.trim().toLowerCase();
+  const invite = $('authInvite').value.trim().toUpperCase();
+  $('authErr1').classList.add('hidden');
+  busy($('authGo'), true);
+  try {
+    if (authMode === 'signup') {
+      await signUp(email, invite);
+      pending = { email, session: null, confirming: true };
+      $('authSentTo').textContent = `We sent a code to ${email}. Enter it to finish creating your account.`;
+    } else {
+      const r = await startSignIn(email);
+      pending = { email, session: r.Session, confirming: false };
+      const dest = r.ChallengeParameters?.CODE_DELIVERY_DESTINATION;
+      $('authSentTo').textContent = `We sent a code to ${dest || email}.`;
+    }
+    $('authStep1').classList.add('hidden');
+    $('authStep2').classList.remove('hidden');
+    $('authCode').focus();
+  } catch (err) {
+    showErr($('authErr1'), err.message);
+  } finally {
+    busy($('authGo'), false, authMode === 'signup' ? 'Create account' : 'Continue');
+  }
+});
+
+// Step 2 — the code from the email.
+$('authStep2').addEventListener('submit', async e => {
+  e.preventDefault();
+  const code = $('authCode').value.trim();
+  $('authErr2').classList.add('hidden');
+  busy($('authVerify'), true);
+  try {
+    if (pending.confirming) {
+      // Confirm the address, then start a sign-in straight away so a new
+      // member lands signed in rather than back at the form.
+      await confirmSignUp(pending.email, code);
+      const r = await startSignIn(pending.email);
+      pending = { email: pending.email, session: r.Session, confirming: false };
+      $('authSentTo').textContent = 'Account created. We sent a sign-in code — enter it to continue.';
+      $('authCode').value = '';
+      $('authCode').focus();
+      showToast('Account created — check your email again');
+      return;
+    }
+    const r = await answerOtp(pending.email, code, pending.session);
+    const t = r.AuthenticationResult;
+    if (!t) throw new Error('Unexpected response — please try again.');
+    saveAuth({ accessToken: t.AccessToken, refreshToken: t.RefreshToken, email: pending.email });
+    $('authModal').close();
+    await enterClubMode();
+  } catch (err) {
+    showErr($('authErr2'), err.message);
+  } finally {
+    busy($('authVerify'), false, 'Verify');
+  }
+});
+
+/* ── Entering club mode ───────────────────────────────────────────────────── */
+
+async function enterClubMode() {
+  mode = 'club';
+  db = load();                       // the club cache, not the local ladder
+  refresh();
+  try {
+    me = await api('/api/me');
+  } catch {
+    signOut('Could not reach the club — staying local for now');
+    return;
+  }
+  updateAccountUI();
+  renderAll();
+
+  try { await pull(); } catch (err) { console.warn('initial pull failed', err); }
+  if (me.operator) { loadInviteCode(); await offerMigration(); }
+
+  setSync('idle');
+  updateAccountUI();
+  showToast(me.operator ? 'Signed in as operator' : 'Signed in');
+}
+
+async function loadInviteCode() {
+  try {
+    const r = await api('/api/admin/invite-code');
+    $('inviteCode').textContent = r.code;
+  } catch { $('inviteCode').textContent = '—'; }
+}
+
+/* One-time offer to lift an existing local ladder into the club. Idempotent by
+ * construction — every row already carries a stable client id, so a repeat run
+ * overwrites identical rows rather than duplicating. The local ladder is never
+ * deleted; it stays exactly where it was. */
+async function offerMigration() {
+  let local;
+  try { local = JSON.parse(localStorage.getItem(LOCAL_KEY)); } catch { return; }
+  const np = local?.players?.length ?? 0, nm = local?.matches?.length ?? 0;
+  if (!np && !nm) return;
+  if (localStorage.getItem('chessladder.migrated')) return;
+
+  if (!confirm(
+    `This device has a local ladder with ${np} player${np === 1 ? '' : 's'} and ` +
+    `${nm} game${nm === 1 ? '' : 's'}.\n\nUpload it to the club ladder?\n\n` +
+    `Your local copy is kept either way.`
+  )) { localStorage.setItem('chessladder.migrated', 'declined'); return; }
+
+  try {
+    await api('/api/sync', {
+      method: 'POST',
+      body: JSON.stringify({
+        players: local.players ?? [], matches: local.matches ?? [], settings: local.settings,
+      }),
+    });
+    localStorage.setItem('chessladder.migrated', new Date().toISOString());
+    await pull();
+    showToast(`Uploaded ${np} players and ${nm} games`);
+  } catch (err) {
+    showToast('Upload failed — your local ladder is untouched');
+    console.warn(err);
+  }
+}
+
+/* ── Start ────────────────────────────────────────────────────────────────── */
+
+// Render from whatever is already on this device, then reconcile. The page is
+// usable before the network answers, which is the entire point of local-first.
+async function init() {
+  refresh();
+  renderAll();
+  updateAccountUI();
+
+  if (mode === 'club' && auth) {
+    try {
+      me = await api('/api/me');
+      updateAccountUI();
+      await pull();
+      if (me.operator) loadInviteCode();
+      setSync('idle');
+    } catch (err) {
+      console.warn('could not reach the club', err);
+      setSync(navigator.onLine ? 'error' : 'offline');
+    }
+  }
+}
+
+init();
 </script>
 </body>
 </html>
