@@ -452,9 +452,11 @@
     <h3>Check your email</h3>
     <div class="hint" id="authSentTo"></div>
     <div>
-      <label for="authCode">6-digit code</label>
+      <label for="authCode">Code from your email</label>
+      <!-- Cognito sends 6 digits to confirm a new account but 8 for a
+           passwordless sign-in, so do not pin this to one length. -->
       <input id="authCode" class="otp" inputmode="numeric" autocomplete="one-time-code"
-             maxlength="6" pattern="[0-9]{6}" required placeholder="000000">
+             maxlength="8" pattern="[0-9]{6,8}" required placeholder="••••••">
     </div>
     <div class="auth-err hidden" id="authErr2"></div>
     <div class="hint">
@@ -1317,6 +1319,12 @@ $('authSwitch').addEventListener('click', () => openAuth(authMode === 'signup' ?
 document.querySelectorAll('[data-auth-close]').forEach(b =>
   b.addEventListener('click', () => $('authModal').close()));
 $('authBack').addEventListener('click', () => openAuth(authMode));
+
+// Codes get pasted out of a mail client, so strip anything that isn't a digit
+// rather than failing on a stray space.
+$('authCode').addEventListener('input', e => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 8);
+});
 
 // Step 1 — sign up, or ask Cognito to send a sign-in code.
 $('authStep1').addEventListener('submit', async e => {
