@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "tsc",
+    "validate:foods": "node scripts/validate-foods.mjs",
     "watch": "tsc -w",
     "cdk": "cdk",
     "deploy": "cdk deploy --all",

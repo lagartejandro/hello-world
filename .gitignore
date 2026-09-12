@@ -4,3 +4,6 @@ cdk.out/
 *.js
 *.d.ts
 *.js.map
+
+# website/ is hand-written static source, not tsc output
+!website/*.js

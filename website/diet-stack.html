@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+<script src="derive.js"></script>
 <style>
   :root {
     --bg: #faf9f7;
@@ -323,6 +324,48 @@
     margin-left: 2px;
   }
 
+  .tcm-approx {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    align-self: center;
+  }
+
+  /* ── Compound foods ── */
+  .food-type {
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .ingredients {
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid var(--border);
+  }
+  .ing-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 6px;
+  }
+  .ing {
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+  }
+  .ing b { color: var(--text); font-weight: 500; }
+  .ing-children { color: var(--text-faint); }
+
   /* ── Empty / prompt states ── */
   .state-msg {
     text-align: center;
@@ -419,8 +462,8 @@ const ENCOMPASSES = {
 // a food-at-a-time checker. Shown while the diet is selected so the tool is
 // honest about what it is not telling you.
 const DIET_NOTES = {
-  kosher: 'Kashrut also governs combinations and preparation — meat and dairy may not be cooked or eaten together, and products need reliable certification. This checker looks at one food at a time, so it cannot rule on a dish or a specific brand.',
-  halal: 'For meat, halal status is decided by slaughter and certification rather than by the animal alone. This checker looks at one food at a time.',
+  kosher: 'Dishes are checked for the meat-and-dairy rule against their standard ingredients. Kashrut also governs slaughter and certification, which no food list can settle — a specific brand or kitchen may differ.',
+  halal: 'For meat, halal status is decided by slaughter and certification rather than by the animal alone. Dishes are judged on their standard ingredients, so a specific brand or kitchen may differ.',
 };
 
 // True conflicts: no meaningful food satisfies both.
@@ -439,9 +482,17 @@ let currentQuery = '';
 fetch('foods.json')
   .then(r => r.json())
   .then(data => {
-    allFoods = data.foods;
+    // Compound foods carry only an ingredient list in the data; their compliance
+    // is derived here, into the same flat shape a single food has, so everything
+    // below treats dishes and ingredients alike.
+    const t0 = performance.now();
+    const { resolved, errors } = DietStackDerive.derive(data.foods, data.compounds || []);
+    if (errors.length) console.error('foods.json:', errors);
+    console.info(`derived ${resolved.length} compound foods in ${(performance.now() - t0).toFixed(1)}ms`);
+
+    allFoods = data.foods.concat(resolved);
     fuse = new Fuse(allFoods, {
-      keys: ['name'],
+      keys: ['name', 'aka'],
       threshold: 0.35,
       includeScore: true,
       minMatchCharLength: 2,
@@ -561,7 +612,8 @@ const FAIL_ICON = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><
 
 function getTcmClass(prop) {
   if (prop === 'hot')          return 'tcm-hot';
-  if (prop === 'warm')         return 'tcm-warm';
+  if (prop === 'warm' ||
+      prop === 'warming')      return 'tcm-warm';
   if (prop === 'neutral')      return 'tcm-neutral';
   if (prop === 'cool')         return 'tcm-cool';
   if (prop === 'cold')         return 'tcm-cold';
@@ -586,6 +638,15 @@ function buildTcmRow(food) {
     tcmRow.appendChild(tag);
   });
 
+  // A dish's profile is averaged from its ingredients, so say so rather than
+  // presenting it with the same confidence as a single food's.
+  if (food.tcm_approx) {
+    const approx = document.createElement('span');
+    approx.className = 'tcm-approx';
+    approx.textContent = 'approx';
+    tcmRow.appendChild(approx);
+  }
+
   if (food.tcm_notes) {
     const notes = document.createElement('span');
     notes.className = 'tcm-notes';
@@ -596,6 +657,60 @@ function buildTcmRow(food) {
   return tcmRow;
 }
 
+const dietLabel = key => DIETS.find(d => d.key === key)?.label ?? key;
+
+// Why a compound failed a diet, in terms of the ingredients responsible.
+function failReason(food, key) {
+  if (key === 'kosher' && food.kosherCombo) {
+    return `meat and dairy in the same dish — ${food.kosherCombo.meat.toLowerCase()}`
+         + ` + ${food.kosherCombo.dairy.toLowerCase()}`;
+  }
+  const reasons = food.failReasons?.[key];
+  if (!reasons || !reasons.length) return null;
+  // Names carry their own parenthetical ("Wheat flour (white)"), which reads
+  // badly right before "(in pizza dough)".
+  const plain = name => name.toLowerCase().replace(/\s*\([^)]*\)$/, '');
+  return 'via ' + reasons.map(r =>
+    r.viaName ? `${plain(r.name)} (in ${plain(r.viaName)})` : plain(r.name)
+  ).join(', ');
+}
+
+// Dishes vary. Optional ingredients never change the verdict above — they are
+// listed so the reader can check the version in front of them.
+function buildOptional(food) {
+  const el = document.createElement('div');
+  el.className = 'diet-note';
+  const parts = food.optionalRisks.map(o => {
+    let text = o.name.toLowerCase();
+    if (o.note) text += ` (${o.note})`;
+    const breaks = o.breaks.filter(k => selectedDiets.has(k)).map(dietLabel);
+    if (breaks.length) text += ` — would break ${breaks.join(', ')}`;
+    return text;
+  });
+  el.innerHTML = `<span><b>Often contains &mdash; check:</b> ${parts.join('; ')}</span>`;
+  return el;
+}
+
+function buildIngredients(food) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ingredients';
+  wrap.innerHTML = '<div class="section-label">Ingredients</div>';
+
+  const list = document.createElement('div');
+  list.className = 'ing-list';
+  food.ingredients.forEach(ing => {
+    const row = document.createElement('div');
+    row.className = 'ing';
+    // Nested compounds expand one level; deeper graphs become a wall of text.
+    row.innerHTML = ing.children && ing.children.length
+      ? `<b>${ing.name}</b> <span class="ing-children">&rsaquo; ${ing.children.join(', ').toLowerCase()}</span>`
+      : `<b>${ing.name}</b>`;
+    list.appendChild(row);
+  });
+  wrap.appendChild(list);
+  return wrap;
+}
+
 function renderFoodCard(food) {
   const activeDiets = DIETS.filter(d => selectedDiets.has(d.key));
   const card = document.createElement('div');
@@ -604,7 +719,9 @@ function renderFoodCard(food) {
   // Header row
   const top = document.createElement('div');
   top.className = 'food-card-top';
-  top.innerHTML = `<span class="food-name">${food.name}</span><span class="food-category">${food.category.replace(/-/g,' ')}</span>`;
+  top.innerHTML = `<span class="food-name">${food.name}</span>` + (food.compound
+    ? `<span class="food-type">${food.type}</span>`
+    : `<span class="food-category">${food.category.replace(/-/g,' ')}</span>`);
   card.appendChild(top);
 
   if (activeDiets.length === 0) {
@@ -612,6 +729,10 @@ function renderFoodCard(food) {
     hint.style.cssText = 'font-size:0.8rem;color:var(--text-faint);';
     hint.textContent = 'Select diets above to see compliance.';
     card.appendChild(hint);
+    if (food.compound) {
+      if (food.optionalRisks.length) card.appendChild(buildOptional(food));
+      card.appendChild(buildIngredients(food));
+    }
     card.appendChild(buildTcmRow(food));
     return card;
   }
@@ -621,11 +742,18 @@ function renderFoodCard(food) {
   pills.className = 'diet-pills';
 
   const caveatsData = [];
+  const reasonsData = [];
 
   activeDiets.forEach(diet => {
     // Any diet may carry a per-food caveat: <key>_caveat in the data.
     const pass = food[diet.key];
     const caveat = food[diet.key + '_caveat'] || null;
+
+    // A compound can say which ingredient cost it the pass; a single food can't.
+    if (!pass && food.compound) {
+      const why = failReason(food, diet.key);
+      if (why) reasonsData.push({ label: diet.label, text: why });
+    }
 
     const pill = document.createElement('span');
     pill.className = `diet-pill ${pass ? 'pass' : 'fail'}`;
@@ -639,17 +767,35 @@ function renderFoodCard(food) {
   });
   card.appendChild(pills);
 
-  // Caveats
-  if (caveatsData.length > 0) {
-    const caveatsEl = document.createElement('div');
-    caveatsEl.className = 'caveats';
-    caveatsData.forEach(c => {
+  // Why it failed, then any portion caveats on the diets it still passes
+  [reasonsData, caveatsData].forEach(group => {
+    if (group.length === 0) return;
+    const el = document.createElement('div');
+    el.className = 'caveats';
+    group.forEach(c => {
       const cv = document.createElement('div');
       cv.className = 'caveat';
       cv.innerHTML = `<span class="caveat-label">${c.label}:</span><span>${c.text}</span>`;
-      caveatsEl.appendChild(cv);
+      el.appendChild(cv);
     });
-    card.appendChild(caveatsEl);
+    card.appendChild(el);
+  });
+
+  if (food.compound) {
+    // An override beats the ingredient-by-ingredient derivation, so it has to
+    // show its reasoning wherever it changed a verdict.
+    food.overrideNotes
+      .filter(o => selectedDiets.has(o.key))
+      .forEach(o => {
+        const note = document.createElement('div');
+        note.className = 'diet-note';
+        note.style.setProperty('--c', DIETS.find(d => d.key === o.key)?.color);
+        note.innerHTML = `<span><b>${dietLabel(o.key)}:</b> ${o.reason}</span>`;
+        card.appendChild(note);
+      });
+
+    if (food.optionalRisks.length) card.appendChild(buildOptional(food));
+    card.appendChild(buildIngredients(food));
   }
 
   card.appendChild(buildTcmRow(food));
