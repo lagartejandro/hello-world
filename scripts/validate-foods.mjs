@@ -17,7 +17,7 @@ const page = readFileSync(join(root, 'website/diet-stack.html'), 'utf8');
 
 // derive.js is a browser script assigning to a global; run it and take the API.
 const deriveSrc = readFileSync(join(root, 'website/derive.js'), 'utf8');
-const { DIET_KEYS, derive } = new Function(
+const { DIET_KEYS, PREP, THERMAL, derive } = new Function(
   'globalThis',
   deriveSrc + '\n;return globalThis.DietStackDerive;'
 )({});
@@ -51,12 +51,36 @@ for (const f of foods) {
   }
 }
 
+// ── TCM vocabularies ─────────────────────────────────────────────────────────
+// A typo here is invisible on the page — an unknown tag just renders in the
+// fallback style and scores nothing — so it is worth failing the build over.
+const FLAVOURS = new Set(['sweet', 'sour', 'bitter', 'salty', 'pungent', 'savory',
+                          'damp-forming', 'varies']);
+const TCM_OK = new Set([...Object.keys(THERMAL), ...FLAVOURS]);
+const PREP_OK = new Set(Object.keys(PREP));
+
+for (const f of foods) {
+  for (const p of f.tcm_properties ?? []) {
+    if (!TCM_OK.has(p)) err(`food "${f.id}" has unknown tcm property "${p}"`);
+  }
+  for (const p of f.prep ?? []) {
+    if (!PREP_OK.has(p)) err(`food "${f.id}" has unknown prep "${p}"`);
+  }
+}
+
 // ── Compound shape, refs, overrides ──────────────────────────────────────────
 for (const c of compounds) {
   if (c.type !== 'dish' && c.type !== 'base') {
     err(`compound "${c.id}" has type "${c.type}" (expected "dish" or "base")`);
   }
   if (!c.ingredients?.length) err(`compound "${c.id}" has no ingredients`);
+
+  for (const p of c.prep ?? []) {
+    if (!PREP_OK.has(p)) err(`compound "${c.id}" has unknown prep "${p}"`);
+  }
+  if (!c.prep?.length) {
+    warn(`compound "${c.id}" has no prep — its TCM verdict falls back to nature alone`);
+  }
 
   const required = new Set();
   for (const group of ['ingredients', 'optional']) {

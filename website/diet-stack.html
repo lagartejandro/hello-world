@@ -187,6 +187,16 @@
     box-shadow: var(--shadow-sm);
   }
 
+  /* Whole-card verdict, readable without parsing the pills: green only when every
+     selected diet passes, red as soon as one fails. Matches the border-left idiom
+     already used by .diet-note. */
+  .food-card.card-pass { border-left: 3px solid #16a34a; }
+  .food-card.card-fail { border-left: 3px solid #ef4444; }
+  @media (prefers-color-scheme: dark) {
+    .food-card.card-pass { border-left-color: #22c55e; }
+    .food-card.card-fail { border-left-color: #f87171; }
+  }
+
   .food-card-top {
     display: flex;
     align-items: baseline;
@@ -245,15 +255,6 @@
   .diet-pill svg { flex-shrink: 0; }
 
   /* ── Caveats ── */
-  .caveats { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-  .caveat {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    padding-left: 2px;
-    display: flex;
-    gap: 5px;
-    align-items: flex-start;
-  }
   .caveat-label {
     font-weight: 600;
     white-space: nowrap;
@@ -281,9 +282,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 5px;
-    padding-top: 8px;
-    border-top: 1px solid var(--border);
-    margin-top: 4px;
+    margin-top: 5px;
   }
   .tcm-label {
     font-size: 0.7rem;
@@ -322,6 +321,92 @@
     font-style: italic;
     align-self: center;
     margin-left: 2px;
+  }
+
+  /* ── TCM verdict ── */
+  .tcm-block {
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid var(--border);
+  }
+  .tcm-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tcm-body { padding-left: 32px; }
+  @media (max-width: 480px) { .tcm-body { padding-left: 0; } }
+
+  .tcm-verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 9px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+  }
+  .tcm-verdict.good {
+    background: color-mix(in srgb, #16a34a 12%, transparent);
+    color: #15803d;
+    border-color: color-mix(in srgb, #16a34a 25%, transparent);
+  }
+  .tcm-verdict.neutral {
+    background: var(--surface-raised);
+    color: var(--text-muted);
+    border-color: var(--border-strong);
+  }
+  .tcm-verdict.bad {
+    background: color-mix(in srgb, #ef4444 10%, transparent);
+    color: #dc2626;
+    border-color: color-mix(in srgb, #ef4444 20%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    .tcm-verdict.good { background: rgba(22,163,74,0.18); color: #86efac; }
+    .tcm-verdict.bad  { background: rgba(239,68,68,0.15); color: #f87171; }
+  }
+
+  .tcm-why {
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin-top: 3px;
+  }
+
+  /* Preparation is a method, not a flavour — dashed to read differently. */
+  .tcm-prep {
+    background: transparent;
+    color: var(--text-muted);
+    border-color: var(--border-strong);
+    border-style: dashed;
+  }
+
+  /* ── Hover-revealed diet notes ── */
+  .diet-pill.has-note { cursor: help; }
+  .diet-pill.has-note .pill-label {
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+  }
+  .diet-pill.noted {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 28%, transparent);
+  }
+  .pill-note {
+    display: flex;
+    gap: 5px;
+    align-items: flex-start;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    min-height: 1.45rem;   /* reserve a line so revealing doesn't shift the card */
+  }
+  .pill-note-hint {
+    color: var(--text-faint);
+    font-style: italic;
   }
 
   .tcm-approx {
@@ -611,6 +696,7 @@ const PASS_ICON = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><
 const FAIL_ICON = `<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
 function getTcmClass(prop) {
+  if (DietStackDerive.PREP.hasOwnProperty(prop)) return 'tcm-prep';
   if (prop === 'hot')          return 'tcm-hot';
   if (prop === 'warm' ||
       prop === 'warming')      return 'tcm-warm';
@@ -621,40 +707,60 @@ function getTcmClass(prop) {
   return 'tcm-other';
 }
 
+const VERDICT_ICON = {
+  good: `<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 6.5l2.5 2.5 5.5-5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  neutral: `<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 6h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  bad: `<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1.5L11 10H1z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 5v2M6 8.3v.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`
+};
+
 // TCM is reference information, not a filter — every food shows it, always.
-function buildTcmRow(food) {
-  const tcmRow = document.createElement('div');
-  tcmRow.className = 'tcm-row';
+// Unlike the diets it gets an overall verdict, since "would TCM approve of eating
+// this" is the question the tag list on its own never answered.
+function buildTcmBlock(food) {
+  const block = document.createElement('div');
+  block.className = 'tcm-block';
 
-  const lbl = document.createElement('span');
-  lbl.className = 'tcm-label';
-  lbl.textContent = 'TCM';
-  tcmRow.appendChild(lbl);
+  const verdict = food.tcm_verdict
+    || DietStackDerive.tcmVerdict(food.tcm_properties, food.prep);
 
-  (food.tcm_properties || []).forEach(prop => {
+  const head = document.createElement('div');
+  head.className = 'tcm-head';
+  head.innerHTML = `<span class="tcm-label">TCM</span>`
+    + `<span class="tcm-verdict ${verdict.level}">${VERDICT_ICON[verdict.level]}${verdict.label}</span>`
+    // A dish's profile is averaged from its ingredients, so say so rather than
+    // presenting it with the same confidence as a single food's.
+    + (food.tcm_approx ? `<span class="tcm-approx">approx</span>` : '');
+  block.appendChild(head);
+
+  const body = document.createElement('div');
+  body.className = 'tcm-body';
+
+  const tags = document.createElement('div');
+  tags.className = 'tcm-row';
+  (food.tcm_properties || []).concat(food.prep || []).forEach(prop => {
     const tag = document.createElement('span');
     tag.className = `tcm-tag ${getTcmClass(prop)}`;
     tag.textContent = prop;
-    tcmRow.appendChild(tag);
+    tags.appendChild(tag);
   });
+  body.appendChild(tags);
 
-  // A dish's profile is averaged from its ingredients, so say so rather than
-  // presenting it with the same confidence as a single food's.
-  if (food.tcm_approx) {
-    const approx = document.createElement('span');
-    approx.className = 'tcm-approx';
-    approx.textContent = 'approx';
-    tcmRow.appendChild(approx);
+  if (verdict.reason) {
+    const why = document.createElement('div');
+    why.className = 'tcm-why';
+    why.textContent = verdict.reason;
+    body.appendChild(why);
   }
 
   if (food.tcm_notes) {
-    const notes = document.createElement('span');
-    notes.className = 'tcm-notes';
+    const notes = document.createElement('div');
+    notes.className = 'tcm-why tcm-notes';
     notes.textContent = food.tcm_notes;
-    tcmRow.appendChild(notes);
+    body.appendChild(notes);
   }
 
-  return tcmRow;
+  block.appendChild(body);
+  return block;
 }
 
 const dietLabel = key => DIETS.find(d => d.key === key)?.label ?? key;
@@ -673,6 +779,62 @@ function failReason(food, key) {
   return 'via ' + reasons.map(r =>
     r.viaName ? `${plain(r.name)} (in ${plain(r.viaName)})` : plain(r.name)
   ).join(', ');
+}
+
+// Everything a diet pill has to say about this food, in one place: an override's
+// reasoning, else why it failed, else any portion caveat. Kept off the card until
+// asked for, since several selected diets otherwise bury the ingredients.
+function noteFor(food, key) {
+  if (food.compound) {
+    const override = (food.overrideNotes || []).find(o => o.key === key);
+    if (override) return override.reason;
+  }
+  if (!food[key] && food.compound) {
+    const why = failReason(food, key);
+    if (why) return why;
+  }
+  // Single foods have no ingredients to blame, but often carry portion advice —
+  // worth showing whether the diet passed or failed.
+  return food[key + '_caveat'] || null;
+}
+
+// One line under the pills that fills in for whichever pill is hovered, focused or
+// tapped. Deliberately not a floating tooltip: nothing to clip off a phone screen,
+// and the height is reserved so revealing a note doesn't shift the card.
+function buildPillNote(pills) {
+  const line = document.createElement('div');
+  line.className = 'pill-note';
+  line.setAttribute('role', 'status');
+  line.setAttribute('aria-live', 'polite');
+  const HINT = '<span class="pill-note-hint">Hover a diet to see why.</span>';
+  line.innerHTML = HINT;
+
+  let pinned = null;
+  const show = pill => {
+    line.innerHTML = `<span class="caveat-label">${pill.dataset.label}:</span>`
+                   + `<span>${pill.dataset.note}</span>`;
+    pills.querySelectorAll('.diet-pill').forEach(p => p.classList.toggle('noted', p === pill));
+  };
+  const clear = () => {
+    if (pinned) { show(pinned); return; }
+    line.innerHTML = HINT;
+    pills.querySelectorAll('.noted').forEach(p => p.classList.remove('noted'));
+  };
+  const hit = e => e.target.closest && e.target.closest('.diet-pill.has-note');
+
+  pills.addEventListener('mouseover', e => { const p = hit(e); if (p) show(p); });
+  pills.addEventListener('mouseout',  e => { if (hit(e)) clear(); });
+  pills.addEventListener('focusin',   e => { const p = hit(e); if (p) show(p); });
+  pills.addEventListener('focusout',  clear);
+  // Touch devices have no hover at all, so a tap pins the note instead.
+  pills.addEventListener('click', e => {
+    const p = hit(e);
+    if (!p) return;
+    pinned = pinned === p ? null : p;
+    if (pinned) show(p); else clear();
+  });
+
+  return line;
 }
 
 // Dishes vary. Optional ingredients never change the verdict above — they are
@@ -733,72 +895,48 @@ function renderFoodCard(food) {
       if (food.optionalRisks.length) card.appendChild(buildOptional(food));
       card.appendChild(buildIngredients(food));
     }
-    card.appendChild(buildTcmRow(food));
+    card.appendChild(buildTcmBlock(food));
     return card;
   }
+
+  // One-glance verdict for the whole card. Any single failure rules the food out,
+  // so partial compliance reads the same as none.
+  card.classList.add(activeDiets.some(diet => !food[diet.key]) ? 'card-fail' : 'card-pass');
 
   // Diet pills
   const pills = document.createElement('div');
   pills.className = 'diet-pills';
 
-  const caveatsData = [];
-  const reasonsData = [];
+  let anyNote = false;
 
   activeDiets.forEach(diet => {
-    // Any diet may carry a per-food caveat: <key>_caveat in the data.
     const pass = food[diet.key];
-    const caveat = food[diet.key + '_caveat'] || null;
-
-    // A compound can say which ingredient cost it the pass; a single food can't.
-    if (!pass && food.compound) {
-      const why = failReason(food, diet.key);
-      if (why) reasonsData.push({ label: diet.label, text: why });
-    }
 
     const pill = document.createElement('span');
     pill.className = `diet-pill ${pass ? 'pass' : 'fail'}`;
     pill.style.setProperty('--c', diet.color);
-    pill.innerHTML = `${pass ? PASS_ICON : FAIL_ICON} ${diet.label}`;
-    pills.appendChild(pill);
+    pill.innerHTML = `${pass ? PASS_ICON : FAIL_ICON} <span class="pill-label">${diet.label}</span>`;
 
-    if (caveat) {
-      caveatsData.push({ label: diet.label, text: caveat });
+    const note = noteFor(food, diet.key);
+    if (note) {
+      anyNote = true;
+      pill.classList.add('has-note');
+      pill.tabIndex = 0;
+      pill.dataset.label = diet.label;
+      pill.dataset.note = note;
     }
+    pills.appendChild(pill);
   });
   card.appendChild(pills);
 
-  // Why it failed, then any portion caveats on the diets it still passes
-  [reasonsData, caveatsData].forEach(group => {
-    if (group.length === 0) return;
-    const el = document.createElement('div');
-    el.className = 'caveats';
-    group.forEach(c => {
-      const cv = document.createElement('div');
-      cv.className = 'caveat';
-      cv.innerHTML = `<span class="caveat-label">${c.label}:</span><span>${c.text}</span>`;
-      el.appendChild(cv);
-    });
-    card.appendChild(el);
-  });
+  if (anyNote) card.appendChild(buildPillNote(pills));
 
   if (food.compound) {
-    // An override beats the ingredient-by-ingredient derivation, so it has to
-    // show its reasoning wherever it changed a verdict.
-    food.overrideNotes
-      .filter(o => selectedDiets.has(o.key))
-      .forEach(o => {
-        const note = document.createElement('div');
-        note.className = 'diet-note';
-        note.style.setProperty('--c', DIETS.find(d => d.key === o.key)?.color);
-        note.innerHTML = `<span><b>${dietLabel(o.key)}:</b> ${o.reason}</span>`;
-        card.appendChild(note);
-      });
-
     if (food.optionalRisks.length) card.appendChild(buildOptional(food));
     card.appendChild(buildIngredients(food));
   }
 
-  card.appendChild(buildTcmRow(food));
+  card.appendChild(buildTcmBlock(food));
 
   return card;
 }

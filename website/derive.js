@@ -35,6 +35,17 @@ var KOSHER_MEAT_DERIVED = [
 var THERMAL = { hot: 2, warm: 1, warming: 1, neutral: 0, cool: -1, cold: -2 };
 var BANDS = ['cold', 'cool', 'neutral', 'warm', 'hot'];
 
+// How a food is prepared is most of what TCM judges, and it cannot be read off an
+// ingredient list — nigiri and teriyaki salmon share their ingredients. Long, moist
+// cooking makes food easy to transform; raw, chilled and deep-fried food is taxing.
+var PREP = {
+  stewed: 2, steamed: 1.5, boiled: 1, fermented: 1, baked: 0,
+  grilled: -0.5, roasted: -0.5, spicy: -0.5,
+  raw: -2, chilled: -2, fried: -2
+};
+var THERMAL_SCORE = { hot: -0.5, warm: 1, neutral: 1, cool: -0.5, cold: -1.5 };
+
+var MAX_FLAVOURS = 4;  // non-thermal flavour tags shown on a compound
 var MAX_REASONS = 2;   // ingredients named per failing diet
 var MAX_CAVEATS = 2;   // inherited caveats surfaced per passing diet
 
@@ -42,23 +53,95 @@ function isMeat(food) {
   return food.category === 'meat' || KOSHER_MEAT_DERIVED.indexOf(food.id) !== -1;
 }
 
-// Average the thermal natures and snap to the nearest band; keep only the
-// non-thermal tags that recur, so a fifteen-ingredient dish doesn't become
-// fifteen tags.
-function aggregateTcm(leaves) {
-  var sum = 0, n = 0, counts = {}, order = [];
+// Would TCM broadly approve of eating this? Scored from the thermal band, the
+// preparation, and how damp-forming the thing is. Serves single foods and
+// compounds alike, so a card always has a verdict.
+function tcmVerdict(properties, prep) {
+  properties = properties || [];
+  prep = prep || [];
+  var reasons = [];   // { weight, text } — the strongest two are shown
+
+  var prepScore = 0;
+  prep.forEach(function (p) { if (PREP.hasOwnProperty(p)) prepScore += PREP[p]; });
+  prepScore = Math.max(-3, Math.min(3, prepScore));
+
+  var has = function (p) { return prep.indexOf(p) !== -1; };
+  if (has('raw') && has('chilled')) reasons.push({ weight: -4, text: 'Raw and chilled \u2014 taxing for Spleen Yang' });
+  else if (has('raw'))              reasons.push({ weight: -2, text: 'Raw \u2014 harder for the Spleen to transform' });
+  else if (has('chilled'))          reasons.push({ weight: -2, text: 'Served cold \u2014 slows digestion' });
+  if (has('fried'))                 reasons.push({ weight: -2, text: 'Deep-fried and greasy \u2014 damp-forming' });
+  if (has('stewed') || has('boiled')) reasons.push({ weight: 2, text: 'Long-cooked \u2014 easy to digest' });
+  if (has('steamed'))               reasons.push({ weight: 1.5, text: 'Gently steamed \u2014 easy to digest' });
+  if (has('fermented'))             reasons.push({ weight: 1, text: 'Fermented \u2014 aids digestion' });
+  if (has('spicy'))                 reasons.push({ weight: -0.5, text: 'Pungent and heating' });
+
+  var thermal = null;
+  properties.forEach(function (p) { if (THERMAL.hasOwnProperty(p) && !thermal) thermal = p; });
+  if (thermal === 'warming') thermal = 'warm';
+  var thermalScore = thermal ? THERMAL_SCORE[thermal] : 0;
+  if (thermal === 'cold')      reasons.push({ weight: -1.5, text: 'Cold in nature \u2014 best balanced with something warming' });
+  else if (thermal === 'hot')  reasons.push({ weight: -0.5, text: 'Strongly heating' });
+  else if (thermal === 'warm') reasons.push({ weight: 1, text: 'Warming' });
+  else if (thermal === 'neutral') reasons.push({ weight: 1, text: 'Neutral in nature — easy to tolerate' });
+
+  var damp = 0;
+  properties.forEach(function (p) { if (p.indexOf('damp') !== -1) damp++; });
+  var dampPenalty = Math.max(-2, -damp);
+  if (damp) reasons.push({ weight: dampPenalty, text: 'Damp-forming' });
+
+  var score = prepScore + thermalScore + dampPenalty;
+  // A single ingredient has no preparation, so nature alone caps at 1 — hold it to
+  // a lower bar or nothing raw from the earth could ever read as supportive.
+  var goodAt = prep.length ? 1.5 : 1;
+  var level = score >= goodAt ? 'good' : (score > -1 ? 'neutral' : 'bad');
+  var label = level === 'good' ? 'Supportive'
+            : level === 'neutral' ? 'Fine in moderation'
+            : 'Not recommended';
+
+  // Lead with whatever weighs most, in the direction the verdict went.
+  var wanted = level === 'good' ? 1 : -1;
+  var picked = reasons
+    .filter(function (r) { return (r.weight > 0 ? 1 : -1) === wanted; })
+    .sort(function (a, b) { return Math.abs(b.weight) - Math.abs(a.weight); })
+    .slice(0, 2);
+  if (!picked.length) picked = reasons.slice(0, 1);
+  if (!picked.length) picked = [{ text: 'Neither especially strengthening nor taxing' }];
+
+  return {
+    level: level,
+    label: label,
+    score: score,
+    reason: picked.map(function (r) { return r.text; }).join('; ')
+  };
+}
+
+// Average the thermal natures and snap to the nearest band, then keep the flavour
+// tags by how often they recur — capped, so a fifteen-ingredient dish doesn't turn
+// into fifteen tags, but not so strict that it shows almost nothing.
+function aggregateTcm(leaves, ownPrep) {
+  var sum = 0, n = 0, counts = {}, order = [], prep = [], prepSeen = {};
+  (ownPrep || []).forEach(function (p) {
+    if (!prepSeen[p]) { prepSeen[p] = true; prep.push(p); }
+  });
   leaves.forEach(function (f) {
     (f.tcm_properties || []).forEach(function (p) {
       if (THERMAL.hasOwnProperty(p)) { sum += THERMAL[p]; n++; return; }
       if (!counts[p]) { counts[p] = 0; order.push(p); }
       counts[p]++;
     });
+    // A dish built on ice cream is chilled whether or not it says so.
+    (f.prep || []).forEach(function (p) {
+      if (!prepSeen[p]) { prepSeen[p] = true; prep.push(p); }
+    });
   });
-  var props = [];
-  if (n > 0) props.push(BANDS[Math.max(0, Math.min(4, Math.round(sum / n) + 2))]);
-  var threshold = leaves.length <= 2 ? 1 : 2;
-  order.forEach(function (p) { if (counts[p] >= threshold) props.push(p); });
-  return props;
+  var thermal = [];
+  if (n > 0) thermal.push(BANDS[Math.max(0, Math.min(4, Math.round(sum / n) + 2))]);
+  order.sort(function (a, b) { return counts[b] - counts[a]; });
+  return {
+    properties: thermal.concat(order.slice(0, MAX_FLAVOURS)),
+    prep: prep,
+    verdict: tcmVerdict(thermal.concat(order), prep)
+  };
 }
 
 function derive(foods, compounds) {
@@ -191,6 +274,7 @@ function derive(foods, compounds) {
       if (key === 'kosher') kosherCombo = null;
     });
 
+    var tcm = aggregateTcm(leaves, c.prep);
     var out = {
       id: c.id,
       name: c.name,
@@ -198,7 +282,9 @@ function derive(foods, compounds) {
       category: c.type,
       type: c.type,
       compound: true,
-      tcm_properties: aggregateTcm(leaves),
+      tcm_properties: tcm.properties,
+      prep: tcm.prep,
+      tcm_verdict: tcm.verdict,
       tcm_notes: c.tcm_notes || '',
       tcm_approx: true,
       leafOrder: closure.order,
@@ -239,7 +325,14 @@ function derive(foods, compounds) {
   return { resolved: resolved, errors: errors };
 }
 
-var api = { DIET_KEYS: DIET_KEYS, KOSHER_MEAT_DERIVED: KOSHER_MEAT_DERIVED, derive: derive };
+var api = {
+  DIET_KEYS: DIET_KEYS,
+  KOSHER_MEAT_DERIVED: KOSHER_MEAT_DERIVED,
+  PREP: PREP,
+  THERMAL: THERMAL,
+  tcmVerdict: tcmVerdict,
+  derive: derive
+};
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 global.DietStackDerive = api;
 
