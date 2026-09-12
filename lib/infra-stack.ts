@@ -107,12 +107,31 @@ function handler(event) {
 
     // -------------------------------------------------------------------------
     // Deploy website files to S3
+    //
+    // Cache-Control matters here. Without it S3 sends none, so browsers cache
+    // heuristically off Last-Modified and keep serving an old page for hours —
+    // a deploy then looks broken rather than absent, because a stale HTML file
+    // loads fresh JSON and silently drops whatever the new markup added.
+    //
+    // max-age=0 + must-revalidate makes the browser check every load, which is
+    // a cheap 304 on files this size. s-maxage keeps CloudFront caching for a
+    // day regardless, and distributionPaths below flushes it on every deploy.
+    //
+    // Deliberately NOT long max-age + immutable: nothing here has a
+    // content-hashed filename, so foods.json and derive.js would go stale
+    // indefinitely.
     // -------------------------------------------------------------------------
     new s3deploy.BucketDeployment(this, 'DeployWebsite', {
       sources: [s3deploy.Source.asset('./website')],
       destinationBucket: bucket,
       distribution,
       distributionPaths: ['/*'],
+      cacheControl: [
+        s3deploy.CacheControl.setPublic(),
+        s3deploy.CacheControl.maxAge(cdk.Duration.seconds(0)),
+        s3deploy.CacheControl.sMaxAge(cdk.Duration.days(1)),
+        s3deploy.CacheControl.mustRevalidate(),
+      ],
     });
 
     // -------------------------------------------------------------------------
