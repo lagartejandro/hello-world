@@ -1,6 +1,6 @@
 /# Deployment spec: Camino × 2026 eclipse interactive map
 
-**For:** Claude Code, running locally inside the `hello-world` project repo
+**For:** Claude Code, running locally inside the `lagartejandro.com` project repo
 **Goal:** Add a self-contained interactive map (Camino Francés overlaid with the Aug 12 2026 total-solar-eclipse path) to the site and deploy it to lagartejandro.com.
 
 ---

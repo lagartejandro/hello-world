@@ -45,6 +45,13 @@ var PREP = {
 };
 var THERMAL_SCORE = { hot: -0.5, warm: 1, neutral: 1, cool: -0.5, cold: -1.5 };
 
+// Keto and Atkins are the only quantitative diets here, and the carb figures catch
+// what booleans cannot: a dish of individually keto ingredients can still blow the
+// carb budget. The test only ever TIGHTENS the curated verdict — it never promotes
+// a food the curation rejected, because a teaspoon of honey would otherwise squeak
+// under the limit and read as keto. Grams of net carbs, over a realistic portion.
+var NET_CARB_LIMIT = { keto: 10, atkins: 20 };
+
 var MAX_FLAVOURS = 4;  // non-thermal flavour tags shown on a compound
 var MAX_REASONS = 2;   // ingredients named per failing diet
 var MAX_CAVEATS = 2;   // inherited caveats surfaced per passing diet
@@ -144,6 +151,93 @@ function aggregateTcm(leaves, ownPrep) {
   };
 }
 
+// Net carbs = carbohydrate less fibre and less sugar alcohols. Polyols are
+// excluded because that is the entire point of them.
+function netCarbs(n) {
+  if (!n || n.carbs_g == null) return null;
+  return Math.max(0, n.carbs_g - (n.fiber_g || 0) - (n.polyol_g || 0));
+}
+
+function carbNote(net, per, key, allowedByIngredients) {
+  var over = net > NET_CARB_LIMIT[key];
+  return net.toFixed(1) + 'g net carbs per ' + per
+       + (over && allowedByIngredients ? ' — over the ' + NET_CARB_LIMIT[key] + 'g limit' : '');
+}
+
+// Recomputes keto and atkins on single foods from their carb figures. Call before
+// derive() so compounds build on the same verdicts. Writes the reasoning into the
+// existing <key>_caveat field, which the card already reveals on hover.
+function applyCarbFlags(foods) {
+  var changed = [];
+  foods.forEach(function (f) {
+    var per100 = netCarbs(f.nutrients);
+    if (per100 === null) return;
+    // Judged over a realistic portion of the food, not a flat 100g: 100g of
+    // cinnamon is not a food, and a glass of milk is more than 100g.
+    var portion = f.portion_g || 100;
+    var net = per100 * portion / 100;
+    ['keto', 'atkins'].forEach(function (key) {
+      var was = f[key];
+      f[key] = was && net <= NET_CARB_LIMIT[key];
+      f[key + '_caveat'] = carbNote(net, portion + 'g portion', key, was);
+      if (was !== f[key]) changed.push({ id: f.id, key: key, was: was, now: f[key], net: net });
+    });
+  });
+  return changed;
+}
+
+// The conditions the derivation genuinely cannot cope with. The editor blocks Save
+// on these, and an import rejects recipes that trip them.
+function validateRecipe(recipe, foods, compounds) {
+  var problems = [];
+  var known = {};
+  foods.forEach(function (f) { known[f.id] = true; });
+  compounds.forEach(function (c) { known[c.id] = true; });
+  // The recipe itself is a real id, so referencing it is a cycle rather than a
+  // dangling ref — without this it gets reported as both.
+  if (recipe && recipe.id) known[recipe.id] = true;
+
+  if (!recipe || !String(recipe.name || '').trim()) {
+    problems.push({ field: 'name', message: 'Give the recipe a name.' });
+  }
+  var ingredients = (recipe && recipe.ingredients) || [];
+  if (!ingredients.length) {
+    problems.push({ field: 'ingredients', message: 'Add at least one ingredient.' });
+  }
+  ingredients.forEach(function (ing, i) {
+    if (!known[ing.ref]) {
+      problems.push({ field: 'ingredients', index: i,
+                      message: '"' + ing.ref + '" is not in the food list.' });
+    }
+    if (!(ing.g > 0)) {
+      problems.push({ field: 'ingredients', index: i,
+                      message: 'Weight must be more than 0g.' });
+    }
+  });
+
+  // A recipe reaching itself through any chain would spin the derivation forever.
+  var byId = {};
+  compounds.forEach(function (c) { byId[c.id] = c; });
+  if (recipe && recipe.id) byId[recipe.id] = recipe;
+  var seen = {};
+  (function walk(id, trail) {
+    if (trail.indexOf(id) !== -1) {
+      problems.push({ field: 'ingredients',
+                      message: 'This recipe ends up containing itself (via '
+                             + trail.concat(id).join(' \u203a ') + ').' });
+      return;
+    }
+    var node = byId[id];
+    if (!node || seen[id]) return;
+    seen[id] = true;
+    (node.ingredients || []).forEach(function (ing) {
+      walk(ing.ref, trail.concat(id));
+    });
+  })(recipe && recipe.id, []);
+
+  return problems;
+}
+
 function derive(foods, compounds) {
   var singles = {}, byCompound = {}, errors = [];
   foods.forEach(function (f) { singles[f.id] = f; });
@@ -188,7 +282,13 @@ function derive(foods, compounds) {
       return { pass: false, blame: [{ id: ref, name: leaf.name, via: null }] };
     }
     var child = memo[ref] || resolve(ref);
-    if (!child) return { pass: true };
+    // Nothing answers to this ref — either it matches no food, or it sits on a
+    // cycle. Treating that as a pass would let a recipe whose meat ingredient was
+    // renamed away quietly report itself vegan, so it fails loudly instead.
+    if (!child) {
+      return { pass: false, unresolved: true,
+               blame: [{ id: ref, name: ref, via: null, unresolved: true }] };
+    }
     if (child[key]) return { pass: true, caveat: child[key + '_caveat'] || null, from: child.name };
     var inner = child.failReasons[key];
     if (inner && inner.length) {
@@ -212,6 +312,9 @@ function derive(foods, compounds) {
     inProgress[id] = true;
 
     var ingredients = c.ingredients || [];
+    var unresolvedRefs = ingredients
+      .map(function (ing) { return ing.ref; })
+      .filter(function (ref) { return !singles[ref] && !byCompound[ref]; });
     var closure = leafClosure(ingredients, id);
     var leaves = closure.order.map(function (l) { return singles[l]; });
 
@@ -274,6 +377,46 @@ function derive(foods, compounds) {
       if (key === 'kosher') kosherCombo = null;
     });
 
+    // Nutrients sum rather than AND, so they need quantities. Generic over
+    // whatever keys the data carries: adding micronutrients later is a data
+    // change, not a code change. A compound ingredient contributes the fraction
+    // of its own recipe that this dish actually uses.
+    var totals = {}, recipeWeight = 0;
+    function addScaled(src, factor) {
+      Object.keys(src).forEach(function (k) {
+        totals[k] = (totals[k] || 0) + src[k] * factor;
+      });
+    }
+    ingredients.forEach(function (ing) {
+      var g = ing.g || 0;
+      recipeWeight += g;
+      if (!g) return;
+      var leaf = singles[ing.ref];
+      if (leaf) { if (leaf.nutrients) addScaled(leaf.nutrients, g / 100); return; }
+      var child = memo[ing.ref] || resolve(ing.ref);
+      if (child && child.serving_g > 0) addScaled(child.nutrients_serving, g / child.serving_g);
+    });
+
+    // The ingredient weights describe one serving, so the serving weight is their
+    // sum and can never contradict the ingredient list.
+    var perHundred = {};
+    if (recipeWeight > 0) {
+      Object.keys(totals).forEach(function (k) {
+        perHundred[k] = totals[k] * 100 / recipeWeight;
+      });
+    }
+
+    // Tighten only: an ingredient that fails still fails, and the carb budget can
+    // additionally rule out a dish whose ingredients all individually pass.
+    var net = netCarbs(totals);
+    var carbRuled = {};
+    if (net !== null) {
+      ['keto', 'atkins'].forEach(function (key) {
+        carbRuled[key] = flags[key] && net > NET_CARB_LIMIT[key];
+        if (carbRuled[key]) { flags[key] = false; delete failReasons[key]; }
+      });
+    }
+
     var tcm = aggregateTcm(leaves, c.prep);
     var out = {
       id: c.id,
@@ -282,6 +425,12 @@ function derive(foods, compounds) {
       category: c.type,
       type: c.type,
       compound: true,
+      custom: !!c.custom,   // a recipe the reader saved, not something we shipped
+      unresolvedRefs: unresolvedRefs,
+      nutrients: perHundred,            // per 100g, same meaning as on a single food
+      nutrients_serving: totals,        // per serving
+      serving_g: Math.round(recipeWeight),
+      net_carbs_g: net,
       tcm_properties: tcm.properties,
       prep: tcm.prep,
       tcm_verdict: tcm.verdict,
@@ -305,6 +454,10 @@ function derive(foods, compounds) {
     };
     DIET_KEYS.forEach(function (key) {
       out[key] = flags[key];
+      if ((key === 'keto' || key === 'atkins') && net !== null) {
+        out[key + '_caveat'] = carbNote(net, 'serving', key, flags[key] || carbRuled[key]);
+        return;
+      }
       out[key + '_caveat'] = caveats[key]
         ? caveats[key].map(function (n) {
             return n.text.replace(/\.$/, '') + ' — from ' + n.from.toLowerCase();
@@ -330,6 +483,10 @@ var api = {
   KOSHER_MEAT_DERIVED: KOSHER_MEAT_DERIVED,
   PREP: PREP,
   THERMAL: THERMAL,
+  NET_CARB_LIMIT: NET_CARB_LIMIT,
+  netCarbs: netCarbs,
+  applyCarbFlags: applyCarbFlags,
+  validateRecipe: validateRecipe,
   tcmVerdict: tcmVerdict,
   derive: derive
 };

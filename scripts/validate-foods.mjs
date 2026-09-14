@@ -17,7 +17,7 @@ const page = readFileSync(join(root, 'website/diet-stack.html'), 'utf8');
 
 // derive.js is a browser script assigning to a global; run it and take the API.
 const deriveSrc = readFileSync(join(root, 'website/derive.js'), 'utf8');
-const { DIET_KEYS, PREP, THERMAL, derive } = new Function(
+const { DIET_KEYS, PREP, THERMAL, derive, applyCarbFlags } = new Function(
   'globalThis',
   deriveSrc + '\n;return globalThis.DietStackDerive;'
 )({});
@@ -40,6 +40,11 @@ const compoundIds = new Set();
 for (const c of compounds) {
   if (compoundIds.has(c.id)) err(`duplicate compound id "${c.id}"`);
   if (foodIds.has(c.id)) err(`compound id "${c.id}" collides with a single food`);
+  // "my-" is reserved for recipes the reader saves in their own browser; a shipped
+  // compound taking that prefix could silently shadow one of them.
+  if (c.id.startsWith('my-')) {
+    err(`compound id "${c.id}" uses the "my-" prefix reserved for user recipes`);
+  }
   compoundIds.add(c.id);
 }
 const known = new Set([...foodIds, ...compoundIds]);
@@ -68,6 +73,46 @@ for (const f of foods) {
   }
 }
 
+// ── Nutrients ────────────────────────────────────────────────────────────────
+// The 4/4/9 energy equation is a mechanical typo-catcher: a mistyped digit in any
+// of these fields stops agreeing with kcal. These are the foods where it genuinely
+// does not apply, each with the reason.
+const KCAL_EXEMPT = {
+  'beer': 'ethanol carries the energy',
+  'wine-red': 'ethanol carries the energy',
+  'wine-white': 'ethanol carries the energy',
+  'vanilla-extract': 'mostly ethanol',
+  'erythritol': 'sugar alcohol, ~0.2 kcal/g',
+  'xylitol': 'sugar alcohol, ~2.4 kcal/g',
+  'baking-powder': 'mineral salts, carbohydrate largely unmetabolised',
+  'cocoa-powder': 'much of the carbohydrate is unavailable',
+};
+const MACRO_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g'];
+
+for (const f of foods) {
+  const n = f.nutrients;
+  if (!n) { err(`food "${f.id}" has no nutrients`); continue; }
+  for (const k of MACRO_KEYS) {
+    if (typeof n[k] !== 'number' || !Number.isFinite(n[k])) {
+      err(`food "${f.id}" nutrient "${k}" is not a number`);
+    } else if (n[k] < 0) {
+      err(`food "${f.id}" nutrient "${k}" is negative`);
+    }
+  }
+  if (!(f.portion_g > 0)) err(`food "${f.id}" has no positive portion_g`);
+
+  const { kcal, protein_g: p, carbs_g: c, fat_g: fat, fiber_g: fib, sugar_g: sug } = n;
+  if (sug > c + 0.05) err(`food "${f.id}" has more sugar (${sug}) than carbohydrate (${c})`);
+  if (fib > c + 0.05) err(`food "${f.id}" has more fibre (${fib}) than carbohydrate (${c})`);
+  if ((n.polyol_g ?? 0) > c + 0.05) err(`food "${f.id}" has more polyol than carbohydrate`);
+  if (!(f.id in KCAL_EXEMPT) && kcal > 5) {
+    const predicted = 4 * p + 4 * Math.max(0, c - fib) + 9 * fat + 2 * fib;
+    if (Math.abs(predicted - kcal) > Math.max(25, 0.25 * kcal)) {
+      err(`food "${f.id}" lists ${kcal} kcal but its macros imply ${Math.round(predicted)}`);
+    }
+  }
+}
+
 // ── Compound shape, refs, overrides ──────────────────────────────────────────
 for (const c of compounds) {
   if (c.type !== 'dish' && c.type !== 'base') {
@@ -89,6 +134,9 @@ for (const c of compounds) {
         err(`compound "${c.id}" ${group} references "${ing.ref}", which matches no food or compound`);
       }
       if (ing.ref === c.id) err(`compound "${c.id}" lists itself as an ingredient`);
+      if (!(ing.g > 0)) {
+        err(`compound "${c.id}" ${group} "${ing.ref}" has no positive weight in grams`);
+      }
       if (group === 'ingredients') required.add(ing.ref);
       else if (required.has(ing.ref)) {
         err(`compound "${c.id}" lists "${ing.ref}" as both required and optional`);
@@ -104,6 +152,7 @@ for (const c of compounds) {
 }
 
 // ── Derivation: cycles and dangling refs surface here ─────────────────────────
+applyCarbFlags(foods);
 const { resolved, errors: deriveErrors } = derive(foods, compounds);
 deriveErrors.forEach(err);
 if (resolved.length !== compounds.length) {
@@ -136,7 +185,12 @@ for (const c of compounds) {
 }
 
 // ── The page must have UI for every diet the derivation knows about ───────────
-const uiKeys = new Set([...page.matchAll(/\bkey:\s*'([a-z0-9_]+)'/g)].map((m) => m[1]));
+// Scoped to the DIETS array: other arrays in the page also use a `key` field.
+const dietsBlock = page.match(/const DIETS = \[([\s\S]*?)\n\];/);
+if (!dietsBlock) err('could not find the DIETS array in the page');
+const uiKeys = new Set(
+  [...(dietsBlock?.[1] ?? '').matchAll(/\bkey:\s*'([a-z0-9_]+)'/g)].map((m) => m[1])
+);
 for (const key of DIET_KEYS) {
   if (!uiKeys.has(key)) err(`diet "${key}" is in DIET_KEYS but has no entry in the page's DIETS`);
 }
@@ -153,6 +207,14 @@ if (process.argv.includes('--table')) {
     console.log(`${r.type === 'base' ? '·' : ' '} ${r.name.slice(0, 23).padEnd(24)}${cells}`);
   }
   console.log();
+}
+
+const weights = resolved.map((r) => r.serving_g).filter((w) => w > 0).sort((a, b) => a - b);
+if (weights.length) {
+  const odd = resolved.filter((r) => r.type === 'dish' && (r.serving_g < 80 || r.serving_g > 900));
+  for (const r of odd) {
+    warn(`dish "${r.id}" has an implausible serving weight of ${r.serving_g}g`);
+  }
 }
 
 const nBase = compounds.filter((c) => c.type === 'base').length;

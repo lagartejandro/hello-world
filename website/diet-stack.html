@@ -5,12 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Diet Stack</title>
 <meta name="description" content="Stack multiple diets and check food compliance across all of them at once.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+<script src="vendor/fuse.min.js"></script>
 <script src="derive.js"></script>
 <style>
+  /* Inter as a single variable file covering 400-600, self-hosted: a home-screen
+     app cannot wait on fonts.googleapis.com, and offline it would never arrive. */
+  @font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400 600;
+    font-display: swap;
+    src: url('fonts/inter-latin.woff2') format('woff2');
+  }
+
   :root {
     --bg: #faf9f7;
     --surface: #ffffff;
@@ -323,6 +330,266 @@
     margin-left: 2px;
   }
 
+  /* ── Recipe controls ── */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 13px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text-muted);
+    font: 500 0.82rem 'Inter', sans-serif;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:hover { border-color: var(--text-faint); color: var(--text); }
+  .btn.primary { border-color: var(--text); color: var(--text); }
+  .btn.active { background: var(--surface-raised); color: var(--text); border-color: var(--text-faint); }
+  .btn.danger:hover { border-color: #ef4444; color: #dc2626; }
+  .btn[hidden] { display: none; }
+
+  /* ── Recipe editor dialog ── */
+  dialog.editor {
+    width: min(640px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px);
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    box-shadow: var(--shadow-md);
+  }
+  dialog.editor::backdrop { background: rgba(0,0,0,0.45); }
+  .editor-body {
+    padding: 20px;
+    overflow-y: auto;
+    max-height: calc(100vh - 48px);
+  }
+  .editor h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 16px;
+  }
+  .field { margin-bottom: 16px; }
+  .field > label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 7px;
+  }
+  .text-input {
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    border: 1.5px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--text);
+    font: 0.92rem 'Inter', sans-serif;
+    outline: none;
+  }
+  .text-input:focus { border-color: var(--text-faint); }
+
+  /* Ingredient rows */
+  .ing-rows { display: flex; flex-direction: column; gap: 7px; }
+  .ing-row { display: flex; gap: 7px; align-items: flex-start; }
+  .ing-pick { position: relative; flex: 1; min-width: 0; }
+  .ing-grams { width: 84px; flex-shrink: 0; }
+  .ing-grams .text-input { text-align: right; font-variant-numeric: tabular-nums; }
+  .ing-row .btn { padding: 8px 10px; flex-shrink: 0; }
+
+  .ing-hits {
+    position: absolute;
+    z-index: 5;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .ing-hits:empty { display: none; }
+  .ing-hit {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 11px;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: 0.85rem 'Inter', sans-serif;
+    text-align: left;
+    cursor: pointer;
+  }
+  .ing-hit:hover, .ing-hit:focus { background: var(--surface-raised); outline: none; }
+  .ing-hit span { color: var(--text-faint); font-size: 0.75rem; white-space: nowrap; }
+
+  /* Prep tag toggles */
+  .prep-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .prep-tag {
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1.5px dashed var(--border-strong);
+    background: none;
+    color: var(--text-muted);
+    font: 500 0.78rem 'Inter', sans-serif;
+    cursor: pointer;
+  }
+  .prep-tag.on {
+    border-style: solid;
+    border-color: var(--text);
+    color: var(--text);
+    background: var(--surface-raised);
+  }
+
+  .editor-problems {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 14px;
+  }
+  .editor-problems:empty { display: none; }
+  .editor-problem {
+    font-size: 0.8rem;
+    color: #dc2626;
+    background: color-mix(in srgb, #ef4444 8%, transparent);
+    border: 1px solid color-mix(in srgb, #ef4444 20%, transparent);
+    border-radius: var(--radius-xs);
+    padding: 7px 10px;
+  }
+  @media (prefers-color-scheme: dark) { .editor-problem { color: #f87171; } }
+
+  .editor-preview { margin-bottom: 16px; }
+  .editor-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding-top: 4px;
+  }
+  .editor-actions .spacer { margin-right: auto; }
+
+  /* ── Custom recipe cards ── */
+  .food-type.mine {
+    border-color: var(--text-faint);
+    color: var(--text);
+  }
+  .card-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid var(--border);
+  }
+  .card-actions .btn { padding: 5px 10px; font-size: 0.76rem; }
+
+  .unverifiable {
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    background: var(--surface-raised);
+    border-left: 2px solid #f59e0b;
+    border-radius: var(--radius-xs);
+    padding: 9px 12px;
+  }
+  .unverifiable b { color: var(--text); font-weight: 600; }
+
+  /* ── Macros ──
+     Three categorical hues carrying identity (protein / carbs / fat), taken from
+     slots 1-3 of the validated default palette. Checked with the palette validator
+     against this page's own surfaces: all gates pass in both modes. Light-mode aqua
+     sits at 2.82:1, under 3:1, so the relief rule applies — the direct labels below
+     the bar are always visible and are not optional. */
+  .macros {
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid var(--border);
+    --macro-protein: #2a78d6;
+    --macro-carbs:   #eb6834;
+    --macro-fat:     #1baf7a;
+  }
+  @media (prefers-color-scheme: dark) {
+    .macros {
+      --macro-protein: #3987e5;
+      --macro-carbs:   #d95926;
+      --macro-fat:     #199e70;
+    }
+  }
+
+  .macro-head {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .macro-kcal { font-size: 1.15rem; font-weight: 600; letter-spacing: -0.01em; }
+  .macro-unit { font-size: 0.8rem; color: var(--text-muted); }
+  .macro-serving { font-size: 0.78rem; color: var(--text-faint); margin-left: auto; }
+
+  /* Thin mark, 2px of surface between fills rather than borders, rounded outer ends. */
+  .macro-bar {
+    display: flex;
+    gap: 2px;
+    height: 8px;
+    margin-bottom: 7px;
+  }
+  .macro-seg {
+    min-width: 3px;
+    background: var(--c);
+    cursor: help;
+  }
+  .macro-seg:first-child { border-radius: 4px 0 0 4px; }
+  .macro-seg:last-child  { border-radius: 0 4px 4px 0; }
+  .macro-seg.lit { outline: 2px solid var(--c); outline-offset: 2px; }
+
+  .macro-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin-bottom: 8px;
+  }
+  .macro-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+  .macro-key i {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    background: var(--c);
+    flex-shrink: 0;
+  }
+
+  .macro-figs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+    gap: 2px 12px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .macro-figs b { color: var(--text); font-weight: 600; }
+
   /* ── TCM verdict ── */
   .tcm-block {
     margin-top: 10px;
@@ -499,10 +766,54 @@
     >
   </div>
 
+  <div class="controls">
+    <button class="btn primary" id="newRecipeBtn">+ New recipe</button>
+    <button class="btn" id="myRecipesBtn" hidden></button>
+    <button class="btn" id="exportBtn" hidden>Export</button>
+    <button class="btn" id="importBtn">Import</button>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+  </div>
+
   <div id="resultsMeta" class="results-meta"></div>
   <div id="resultsList" class="results-list"></div>
 
 </div>
+
+<dialog class="editor" id="recipeDialog" aria-labelledby="editorTitle">
+  <div class="editor-body">
+    <h2 id="editorTitle">New recipe</h2>
+
+    <div class="editor-problems" id="editorProblems"></div>
+
+    <div class="field">
+      <label for="recipeName">Name</label>
+      <input class="text-input" id="recipeName" type="text" autocomplete="off"
+             placeholder="Dad&rsquo;s chilli">
+    </div>
+
+    <div class="field">
+      <label>Ingredients</label>
+      <div class="ing-rows" id="ingRows"></div>
+      <button class="btn" id="addIngBtn" style="margin-top:8px">+ Add ingredient</button>
+    </div>
+
+    <div class="field">
+      <label>How it&rsquo;s prepared</label>
+      <div class="prep-tags" id="prepTags"></div>
+    </div>
+
+    <div class="field">
+      <label>Preview</label>
+      <div class="editor-preview" id="editorPreview"></div>
+    </div>
+
+    <div class="editor-actions">
+      <button class="btn danger spacer" id="deleteRecipeBtn" hidden>Delete</button>
+      <button class="btn" id="cancelRecipeBtn">Cancel</button>
+      <button class="btn primary" id="saveRecipeBtn">Save recipe</button>
+    </div>
+  </div>
+</dialog>
 
 <script>
 // ── Diet definitions ─────────────────────────────────────────────────────────
@@ -562,6 +873,76 @@ let selectedDiets = new Set();
 let allFoods = [];
 let fuse = null;
 let currentQuery = '';
+let baseData = null;      // foods.json as shipped
+let userRecipes = [];     // the reader's own, from localStorage
+let showingMine = false;
+
+// ── Recipe storage ───────────────────────────────────────────────────────────
+// No accounts, so recipes live in this browser. Versioned, because the compound
+// shape has already changed twice and will again.
+const RECIPE_KEY = 'dietstack.recipes.v1';
+
+function loadRecipes() {
+  try {
+    const raw = localStorage.getItem(RECIPE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed?.recipes) ? parsed.recipes : [];
+  } catch (e) {
+    // Private mode, disabled storage, or something hand-edited into nonsense.
+    console.warn('could not read saved recipes:', e);
+    return [];
+  }
+}
+
+function persistRecipes() {
+  try {
+    localStorage.setItem(RECIPE_KEY, JSON.stringify({ version: 1, recipes: userRecipes }));
+    return true;
+  } catch (e) {
+    showToast('Could not save — this browser is blocking local storage.');
+    return false;
+  }
+}
+
+// Namespaced so a recipe can never collide with a built-in id, including ones
+// that do not exist yet.
+function newRecipeId(name) {
+  const slug = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '').slice(0, 28) || 'recipe';
+  const rand = Math.random().toString(36).slice(2, 6);
+  return `my-${slug}-${rand}`;
+}
+
+// ── Rebuild ──────────────────────────────────────────────────────────────────
+// Everything downstream of the data is derived, so a change to the recipe list is
+// just a re-run. ~2ms of derivation plus ~1ms of indexing at this size.
+function rebuild() {
+  const { resolved, errors } = DietStackDerive.derive(
+    baseData.foods, baseData.compounds.concat(userRecipes));
+  if (errors.length) console.warn('derivation:', errors);
+
+  allFoods = baseData.foods.concat(resolved);
+  fuse = new Fuse(allFoods, {
+    keys: ['name', 'aka'],
+    threshold: 0.35,
+    includeScore: true,
+    minMatchCharLength: 2,
+    ignoreLocation: true,
+  });
+  updateRecipeControls();
+  renderResults();
+}
+
+function updateRecipeControls() {
+  const n = userRecipes.length;
+  const mine = document.getElementById('myRecipesBtn');
+  mine.hidden = n === 0;
+  mine.textContent = `My recipes (${n})`;
+  mine.classList.toggle('active', showingMine);
+  document.getElementById('exportBtn').hidden = n === 0;
+  if (showingMine && n === 0) showingMine = false;
+}
 
 // ── Data loading ─────────────────────────────────────────────────────────────
 fetch('foods.json')
@@ -571,19 +952,17 @@ fetch('foods.json')
     // is derived here, into the same flat shape a single food has, so everything
     // below treats dishes and ingredients alike.
     const t0 = performance.now();
-    const { resolved, errors } = DietStackDerive.derive(data.foods, data.compounds || []);
-    if (errors.length) console.error('foods.json:', errors);
-    console.info(`derived ${resolved.length} compound foods in ${(performance.now() - t0).toFixed(1)}ms`);
-
-    allFoods = data.foods.concat(resolved);
-    fuse = new Fuse(allFoods, {
-      keys: ['name', 'aka'],
-      threshold: 0.35,
-      includeScore: true,
-      minMatchCharLength: 2,
-      ignoreLocation: true,
-    });
-    renderResults();
+    // Keto and Atkins are quantitative; recompute them from the carb figures before
+    // anything reads them, so dishes build on the same verdicts.
+    const carbChanges = DietStackDerive.applyCarbFlags(data.foods);
+    if (carbChanges.length) {
+      console.info(`carb budget tightened ${carbChanges.length} single-food keto/atkins verdicts`);
+    }
+    baseData = { foods: data.foods, compounds: data.compounds || [] };
+    userRecipes = loadRecipes();
+    rebuild();
+    console.info(`derived ${baseData.compounds.length + userRecipes.length} compound foods`
+               + ` in ${(performance.now() - t0).toFixed(1)}ms`);
   })
   .catch(() => {
     document.getElementById('resultsList').innerHTML =
@@ -688,6 +1067,7 @@ function showToast(msg) {
 // ── Search ───────────────────────────────────────────────────────────────────
 document.getElementById('searchInput').addEventListener('input', e => {
   currentQuery = e.target.value.trim();
+  if (currentQuery && showingMine) { showingMine = false; updateRecipeControls(); }
   renderResults();
 });
 
@@ -765,6 +1145,31 @@ function buildTcmBlock(food) {
 
 const dietLabel = key => DIETS.find(d => d.key === key)?.label ?? key;
 
+function buildCardActions(food) {
+  const row = document.createElement('div');
+  row.className = 'card-actions';
+
+  const edit = document.createElement('button');
+  edit.className = 'btn';
+  edit.textContent = 'Edit';
+  edit.addEventListener('click', () => {
+    const stored = userRecipes.find(r => r.id === food.id);
+    if (stored) openEditor(stored);
+  });
+
+  const del = document.createElement('button');
+  del.className = 'btn danger';
+  del.textContent = 'Delete';
+  let armed = false;
+  del.addEventListener('click', () => {
+    if (!armed) { armed = true; del.textContent = 'Really delete?'; return; }
+    deleteRecipe(food.id, food.name);
+  });
+
+  row.append(edit, del);
+  return row;
+}
+
 // Why a compound failed a diet, in terms of the ingredients responsible.
 function failReason(food, key) {
   if (key === 'kosher' && food.kosherCombo) {
@@ -801,40 +1206,125 @@ function noteFor(food, key) {
 // One line under the pills that fills in for whichever pill is hovered, focused or
 // tapped. Deliberately not a floating tooltip: nothing to clip off a phone screen,
 // and the height is reserved so revealing a note doesn't shift the card.
-function buildPillNote(pills) {
+function buildNoteLine(host, hint) {
   const line = document.createElement('div');
   line.className = 'pill-note';
   line.setAttribute('role', 'status');
   line.setAttribute('aria-live', 'polite');
-  const HINT = '<span class="pill-note-hint">Hover a diet to see why.</span>';
+  const HINT = `<span class="pill-note-hint">${hint}</span>`;
   line.innerHTML = HINT;
 
   let pinned = null;
-  const show = pill => {
-    line.innerHTML = `<span class="caveat-label">${pill.dataset.label}:</span>`
-                   + `<span>${pill.dataset.note}</span>`;
-    pills.querySelectorAll('.diet-pill').forEach(p => p.classList.toggle('noted', p === pill));
+  const show = el => {
+    line.innerHTML = `<span class="caveat-label">${el.dataset.label}:</span>`
+                   + `<span>${el.dataset.note}</span>`;
+    host.querySelectorAll('[data-note]').forEach(n => {
+      n.classList.toggle(n.classList.contains('macro-seg') ? 'lit' : 'noted', n === el);
+    });
   };
   const clear = () => {
     if (pinned) { show(pinned); return; }
     line.innerHTML = HINT;
-    pills.querySelectorAll('.noted').forEach(p => p.classList.remove('noted'));
+    host.querySelectorAll('.noted, .lit').forEach(n => n.classList.remove('noted', 'lit'));
   };
-  const hit = e => e.target.closest && e.target.closest('.diet-pill.has-note');
+  const hit = e => e.target.closest && e.target.closest('[data-note]');
 
-  pills.addEventListener('mouseover', e => { const p = hit(e); if (p) show(p); });
-  pills.addEventListener('mouseout',  e => { if (hit(e)) clear(); });
-  pills.addEventListener('focusin',   e => { const p = hit(e); if (p) show(p); });
-  pills.addEventListener('focusout',  clear);
+  host.addEventListener('mouseover', e => { const el = hit(e); if (el) show(el); });
+  host.addEventListener('mouseout',  e => { if (hit(e)) clear(); });
+  host.addEventListener('focusin',   e => { const el = hit(e); if (el) show(el); });
+  host.addEventListener('focusout',  clear);
   // Touch devices have no hover at all, so a tap pins the note instead.
-  pills.addEventListener('click', e => {
-    const p = hit(e);
-    if (!p) return;
-    pinned = pinned === p ? null : p;
-    if (pinned) show(p); else clear();
+  host.addEventListener('click', e => {
+    const el = hit(e);
+    if (!el) return;
+    pinned = pinned === el ? null : el;
+    if (pinned) show(el); else clear();
   });
 
   return line;
+}
+
+// Protein / carbohydrate / fat are three categories carrying identity, so they get
+// a categorical palette in fixed order — never re-assigned, never cycled.
+const MACROS = [
+  { key: 'protein_g', label: 'protein', perG: 4, c: 'var(--macro-protein)' },
+  { key: 'carbs_g',   label: 'carbs',   perG: 4, c: 'var(--macro-carbs)' },
+  { key: 'fat_g',     label: 'fat',     perG: 9, c: 'var(--macro-fat)' },
+];
+
+// Nutrients are held per 100g on a single food and per serving on a dish; both are
+// shown over a realistic amount of the thing, which is also the basis the carb
+// limits are judged on.
+function buildMacros(food) {
+  const per100 = food.nutrients;
+  if (!per100 || per100.kcal == null) return null;
+
+  const amount = food.compound ? food.serving_g : food.portion_g;
+  if (!amount) return null;
+  const at = key => (per100[key] || 0) * amount / 100;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'macros';
+
+  const kcal = Math.round(at('kcal'));
+  const head = document.createElement('div');
+  head.className = 'macro-head';
+  head.innerHTML = `<span class="macro-kcal">${kcal}</span><span class="macro-unit">kcal</span>`
+    + `<span class="macro-serving">${food.compound ? 'per serving' : 'per portion'}`
+    + ` (${Math.round(amount)}g)</span>`;
+  wrap.appendChild(head);
+
+  // Share of energy, not share of weight — a gram of fat carries over twice a
+  // gram of protein.
+  const parts = MACROS.map(m => ({ ...m, g: at(m.key), energy: at(m.key) * m.perG }));
+  const total = parts.reduce((a, p) => a + p.energy, 0);
+  if (total > 0) {
+    parts.forEach(p => { p.pct = Math.round(p.energy / total * 100); });
+    // Make the rounded shares sum to 100 by nudging the biggest.
+    const drift = 100 - parts.reduce((a, p) => a + p.pct, 0);
+    if (drift) parts.slice().sort((a, b) => b.pct - a.pct)[0].pct += drift;
+
+    const bar = document.createElement('div');
+    bar.className = 'macro-bar';
+    bar.setAttribute('role', 'img');
+    bar.setAttribute('aria-label', 'Share of energy: '
+      + parts.map(p => `${p.pct}% ${p.label}`).join(', '));
+    parts.forEach(p => {
+      const seg = document.createElement('span');
+      seg.className = 'macro-seg';
+      seg.style.setProperty('--c', p.c);
+      seg.style.width = p.pct + '%';
+      seg.tabIndex = 0;
+      seg.dataset.label = p.label[0].toUpperCase() + p.label.slice(1);
+      seg.dataset.note = `${p.g.toFixed(1)}g · ${Math.round(p.energy)} kcal · `
+                       + `${p.pct}% of energy`;
+      bar.appendChild(seg);
+    });
+    wrap.appendChild(bar);
+
+    // Doubles as the legend, so identity is never carried by colour alone. Always
+    // visible — the light-mode aqua is under 3:1 on this surface.
+    const legend = document.createElement('div');
+    legend.className = 'macro-legend';
+    parts.forEach(p => {
+      const key = document.createElement('span');
+      key.className = 'macro-key';
+      key.style.setProperty('--c', p.c);
+      key.innerHTML = `<i></i>${p.pct}% ${p.label}`;
+      legend.appendChild(key);
+    });
+    wrap.appendChild(legend);
+  }
+
+  const figs = document.createElement('div');
+  figs.className = 'macro-figs';
+  const row = (v, unit, label) => `<span><b>${v}${unit}</b> ${label}</span>`;
+  figs.innerHTML = MACROS.map(m => row(at(m.key).toFixed(at(m.key) < 10 ? 1 : 0), 'g', m.label)).join('')
+    + row(at('fiber_g').toFixed(1), 'g', 'fiber')
+    + row(at('sugar_g').toFixed(1), 'g', 'sugar');
+  wrap.appendChild(figs);
+
+  return wrap;
 }
 
 // Dishes vary. Optional ingredients never change the verdict above — they are
@@ -882,20 +1372,40 @@ function renderFoodCard(food) {
   const top = document.createElement('div');
   top.className = 'food-card-top';
   top.innerHTML = `<span class="food-name">${food.name}</span>` + (food.compound
-    ? `<span class="food-type">${food.type}</span>`
+    ? `<span class="food-type${food.custom ? ' mine' : ''}">${food.custom ? 'my recipe' : food.type}</span>`
     : `<span class="food-category">${food.category.replace(/-/g,' ')}</span>`);
   card.appendChild(top);
+
+  // An ingredient that answers to nothing makes every verdict below it a guess
+  // computed from whatever is left, so refuse to show them at all.
+  if (food.compound && food.unresolvedRefs && food.unresolvedRefs.length) {
+    const warn = document.createElement('div');
+    warn.className = 'unverifiable';
+    warn.innerHTML = `<b>Can&rsquo;t be checked.</b> `
+      + `${food.unresolvedRefs.map(r => `&ldquo;${r}&rdquo;`).join(', ')} `
+      + `${food.unresolvedRefs.length > 1 ? 'are' : 'is'} no longer in the food list, `
+      + `so the diet, nutrition and TCM results would be wrong.`;
+    card.appendChild(warn);
+    if (food.custom) card.appendChild(buildCardActions(food));
+    return card;
+  }
 
   if (activeDiets.length === 0) {
     const hint = document.createElement('div');
     hint.style.cssText = 'font-size:0.8rem;color:var(--text-faint);';
     hint.textContent = 'Select diets above to see compliance.';
     card.appendChild(hint);
+    const macrosOnly = buildMacros(food);
+    if (macrosOnly) {
+      card.appendChild(buildNoteLine(card, 'Hover the bar for detail.'));
+      card.appendChild(macrosOnly);
+    }
     if (food.compound) {
       if (food.optionalRisks.length) card.appendChild(buildOptional(food));
       card.appendChild(buildIngredients(food));
     }
     card.appendChild(buildTcmBlock(food));
+    if (food.custom) card.appendChild(buildCardActions(food));
     return card;
   }
 
@@ -929,7 +1439,14 @@ function renderFoodCard(food) {
   });
   card.appendChild(pills);
 
-  if (anyNote) card.appendChild(buildPillNote(pills));
+  const macros = buildMacros(food);
+  // One reveal line per card, fed by the diet pills and the macro bar alike.
+  if (anyNote || macros) {
+    card.appendChild(buildNoteLine(card, anyNote
+      ? 'Hover a diet to see why.'
+      : 'Hover the bar for detail.'));
+  }
+  if (macros) card.appendChild(macros);
 
   if (food.compound) {
     if (food.optionalRisks.length) card.appendChild(buildOptional(food));
@@ -937,9 +1454,296 @@ function renderFoodCard(food) {
   }
 
   card.appendChild(buildTcmBlock(food));
+  if (food.custom) card.appendChild(buildCardActions(food));
 
   return card;
 }
+
+// ── Recipe editor ────────────────────────────────────────────────────────────
+// A user recipe is the same shape as a built-in compound, so it flows through the
+// same derivation and renders with the same card. The editor only has to produce
+// { id, name, prep, ingredients: [{ ref, g }] }.
+const dialog = document.getElementById('recipeDialog');
+let draft = null;          // the recipe being edited
+let editingExisting = false;
+
+function blankDraft() {
+  return { id: null, name: '', type: 'dish', custom: true, prep: [], ingredients: [] };
+}
+
+function openEditor(recipe) {
+  editingExisting = !!recipe;
+  draft = recipe
+    ? JSON.parse(JSON.stringify(recipe))
+    : blankDraft();
+  if (!draft.ingredients.length) draft.ingredients.push({ ref: null, g: 100 });
+
+  document.getElementById('editorTitle').textContent =
+    editingExisting ? 'Edit recipe' : 'New recipe';
+  document.getElementById('recipeName').value = draft.name;
+  document.getElementById('deleteRecipeBtn').hidden = !editingExisting;
+
+  renderPrepTags();
+  renderIngRows();
+  refreshPreview();
+  dialog.showModal();
+  document.getElementById('recipeName').focus();
+}
+
+function renderPrepTags() {
+  const host = document.getElementById('prepTags');
+  host.innerHTML = '';
+  // Straight from the engine's vocabulary, so the two cannot drift apart.
+  Object.keys(DietStackDerive.PREP).forEach(tag => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'prep-tag' + (draft.prep.includes(tag) ? ' on' : '');
+    btn.textContent = tag;
+    btn.setAttribute('aria-pressed', draft.prep.includes(tag));
+    btn.addEventListener('click', () => {
+      const i = draft.prep.indexOf(tag);
+      if (i === -1) draft.prep.push(tag); else draft.prep.splice(i, 1);
+      renderPrepTags();
+      refreshPreview();
+    });
+    host.appendChild(btn);
+  });
+}
+
+function nameOfRef(ref) {
+  const hit = allFoods.find(f => f.id === ref);
+  return hit ? hit.name : ref;
+}
+
+function renderIngRows() {
+  const host = document.getElementById('ingRows');
+  host.innerHTML = '';
+  draft.ingredients.forEach((ing, i) => host.appendChild(buildIngRow(ing, i)));
+}
+
+function buildIngRow(ing, index) {
+  const row = document.createElement('div');
+  row.className = 'ing-row';
+
+  const pick = document.createElement('div');
+  pick.className = 'ing-pick';
+  const input = document.createElement('input');
+  input.className = 'text-input';
+  input.type = 'text';
+  input.autocomplete = 'off';
+  input.placeholder = 'Search foods\u2026';
+  input.value = ing.ref ? nameOfRef(ing.ref) : '';
+  input.setAttribute('aria-label', `Ingredient ${index + 1}`);
+  const hits = document.createElement('div');
+  hits.className = 'ing-hits';
+  pick.append(input, hits);
+
+  // Reuses the page's own index, so your own recipes are pickable as ingredients.
+  const search = () => {
+    const q = input.value.trim();
+    hits.innerHTML = '';
+    if (q.length < 2 || !fuse) return;
+    fuse.search(q).slice(0, 8).forEach(r => {
+      const f = r.item;
+      if (f.id === draft.id) return;          // cannot contain itself
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ing-hit';
+      b.innerHTML = `${f.name}<span>${f.compound ? (f.custom ? 'my recipe' : f.type) : f.category}</span>`;
+      b.addEventListener('click', () => {
+        ing.ref = f.id;
+        input.value = f.name;
+        hits.innerHTML = '';
+        refreshPreview();
+      });
+      hits.appendChild(b);
+    });
+  };
+  input.addEventListener('input', () => { ing.ref = null; search(); });
+  input.addEventListener('focus', search);
+  input.addEventListener('blur', () => setTimeout(() => { hits.innerHTML = ''; }, 150));
+
+  const gramsWrap = document.createElement('div');
+  gramsWrap.className = 'ing-grams';
+  const grams = document.createElement('input');
+  grams.className = 'text-input';
+  grams.type = 'number';
+  grams.min = '1';
+  grams.value = ing.g;
+  grams.setAttribute('aria-label', `Grams for ingredient ${index + 1}`);
+  grams.addEventListener('input', () => {
+    ing.g = Number(grams.value);
+    refreshPreview();
+  });
+  gramsWrap.appendChild(grams);
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'btn';
+  del.textContent = '\u00d7';
+  del.setAttribute('aria-label', `Remove ingredient ${index + 1}`);
+  del.addEventListener('click', () => {
+    draft.ingredients.splice(index, 1);
+    if (!draft.ingredients.length) draft.ingredients.push({ ref: null, g: 100 });
+    renderIngRows();
+    refreshPreview();
+  });
+
+  row.append(pick, gramsWrap, del);
+  return row;
+}
+
+// The preview is the real card, derived the real way — no separate code path that
+// could disagree with what saving actually produces.
+function refreshPreview() {
+  draft.name = document.getElementById('recipeName').value;
+  const host = document.getElementById('editorPreview');
+  host.innerHTML = '';
+
+  const usable = {
+    ...draft,
+    id: draft.id || 'my-preview',
+    name: draft.name.trim() || 'Untitled recipe',
+    ingredients: draft.ingredients.filter(i => i.ref && i.g > 0),
+  };
+  if (!usable.ingredients.length) {
+    host.innerHTML = '<div class="state-msg" style="padding:20px 0">'
+      + '<p>Add an ingredient to see the breakdown.</p></div>';
+    return;
+  }
+  const others = baseData.compounds.concat(userRecipes.filter(r => r.id !== usable.id));
+  const { resolved } = DietStackDerive.derive(baseData.foods, others.concat([usable]));
+  const card = resolved.find(r => r.id === usable.id);
+  if (!card) return;
+  const el = renderFoodCard(card);
+  // The dialog already has Save and Delete; offering them again on a draft card
+  // that may not even be saved yet is just confusing.
+  el.querySelector('.card-actions')?.remove();
+  host.appendChild(el);
+}
+
+function showProblems(problems) {
+  const host = document.getElementById('editorProblems');
+  host.innerHTML = '';
+  problems.forEach(p => {
+    const el = document.createElement('div');
+    el.className = 'editor-problem';
+    el.textContent = p.message;
+    host.appendChild(el);
+  });
+}
+
+function saveDraft() {
+  draft.name = document.getElementById('recipeName').value.trim();
+  const candidate = {
+    ...draft,
+    id: draft.id || newRecipeId(draft.name),
+    ingredients: draft.ingredients.filter(i => i.ref !== null),
+  };
+  const others = baseData.compounds.concat(userRecipes.filter(r => r.id !== candidate.id));
+  const problems = DietStackDerive.validateRecipe(candidate, baseData.foods, others);
+  if (problems.length) { showProblems(problems); return; }
+
+  const now = new Date().toISOString();
+  candidate.created = candidate.created || now;
+  candidate.updated = now;
+
+  const at = userRecipes.findIndex(r => r.id === candidate.id);
+  if (at === -1) userRecipes.push(candidate); else userRecipes[at] = candidate;
+
+  if (persistRecipes()) {
+    showToast(editingExisting ? `Updated ${candidate.name}.` : `Saved ${candidate.name}.`);
+  }
+  dialog.close();
+  rebuild();
+}
+
+function deleteRecipe(id, name) {
+  userRecipes = userRecipes.filter(r => r.id !== id);
+  persistRecipes();
+  rebuild();
+  showToast(`Deleted ${name}.`);
+}
+
+document.getElementById('newRecipeBtn').addEventListener('click', () => openEditor(null));
+document.getElementById('addIngBtn').addEventListener('click', () => {
+  draft.ingredients.push({ ref: null, g: 100 });
+  renderIngRows();
+  document.querySelector('#ingRows .ing-row:last-child .text-input').focus();
+});
+document.getElementById('recipeName').addEventListener('input', refreshPreview);
+document.getElementById('cancelRecipeBtn').addEventListener('click', () => dialog.close());
+document.getElementById('saveRecipeBtn').addEventListener('click', saveDraft);
+document.getElementById('deleteRecipeBtn').addEventListener('click', () => {
+  const { id, name } = draft;
+  dialog.close();
+  deleteRecipe(id, name);
+});
+dialog.addEventListener('close', () => { showProblems([]); });
+
+// ── Export / import ──────────────────────────────────────────────────────────
+// localStorage is per-browser and a data clear wipes it without warning, so a
+// file is the only backup that survives a new laptop.
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({ version: 1, recipes: userRecipes }, null, 2)],
+                        { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `diet-stack-recipes-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('importBtn').addEventListener('click', () => {
+  document.getElementById('importFile').click();
+});
+
+document.getElementById('importFile').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';                       // so the same file can be picked twice
+  let incoming;
+  try {
+    const parsed = JSON.parse(await file.text());
+    incoming = Array.isArray(parsed?.recipes) ? parsed.recipes : null;
+  } catch (err) {
+    incoming = null;
+  }
+  if (!incoming) { showToast('That file does not look like exported recipes.'); return; }
+
+  let added = 0, rejected = 0;
+  incoming.forEach(raw => {
+    const recipe = {
+      id: raw.id, name: raw.name, type: 'dish', custom: true,
+      prep: Array.isArray(raw.prep) ? raw.prep : [],
+      ingredients: Array.isArray(raw.ingredients) ? raw.ingredients : [],
+      created: raw.created, updated: raw.updated,
+    };
+    // Merge rather than replace, and never overwrite a recipe already here.
+    if (!recipe.id || userRecipes.some(r => r.id === recipe.id)) {
+      recipe.id = newRecipeId(recipe.name || 'recipe');
+    }
+    const others = baseData.compounds.concat(userRecipes);
+    if (DietStackDerive.validateRecipe(recipe, baseData.foods, others).length) {
+      rejected++;
+      return;
+    }
+    userRecipes.push(recipe);
+    added++;
+  });
+
+  persistRecipes();
+  rebuild();
+  showToast(`Imported ${added} recipe${added !== 1 ? 's' : ''}`
+          + (rejected ? `, skipped ${rejected} that could not be read.` : '.'));
+});
+
+document.getElementById('myRecipesBtn').addEventListener('click', () => {
+  showingMine = !showingMine;
+  updateRecipeControls();
+  renderResults();
+});
 
 function renderResults() {
   const listEl  = document.getElementById('resultsList');
@@ -950,6 +1754,17 @@ function renderResults() {
   if (!allFoods.length) return;
 
   let foods;
+  if (showingMine) {
+    const mine = new Set(userRecipes.map(r => r.id));
+    foods = allFoods.filter(f => mine.has(f.id));
+    if (!foods.length) {
+      listEl.innerHTML = '<div class="state-msg"><p>No saved recipes yet.</p></div>';
+      return;
+    }
+    metaEl.textContent = `${foods.length} saved recipe${foods.length !== 1 ? 's' : ''}`;
+    foods.forEach(food => listEl.appendChild(renderFoodCard(food)));
+    return;
+  }
   if (currentQuery.length >= 2) {
     const results = fuse.search(currentQuery);
     foods = results.map(r => r.item).slice(0, 30);
