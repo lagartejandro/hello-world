@@ -86,6 +86,19 @@ const KCAL_EXEMPT = {
   'xylitol': 'sugar alcohol, ~2.4 kcal/g',
   'baking-powder': 'mineral salts, carbohydrate largely unmetabolised',
   'cocoa-powder': 'much of the carbohydrate is unavailable',
+  'hard-cider': 'ethanol carries the energy',
+  'champagne': 'ethanol carries the energy',
+  'sake': 'ethanol carries the energy',
+  'whiskey': 'ethanol carries the energy',
+  'vodka': 'ethanol carries the energy',
+  'gin': 'ethanol carries the energy',
+  'rum': 'ethanol carries the energy',
+  'tequila': 'ethanol carries the energy',
+  'allulose': 'rare sugar, largely unmetabolised',
+  'allspice': 'much of the carbohydrate is unavailable',
+  'xanthan-gum': 'soluble fibre, largely unmetabolised',
+  'agar': 'gelling polysaccharide, largely unmetabolised',
+  'wheat-bran': 'the 2 kcal/g fibre term overstates bran this fibrous',
 };
 const MACRO_KEYS = ['kcal', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'sugar_g'];
 

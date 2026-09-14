@@ -1791,8 +1791,18 @@ function browseFoods() {
         !(f.compound && f.unresolvedRefs && f.unresolvedRefs.length) && isCompliant(f))
     : allFoods.slice();
 
+  // Ingredient count stands in for "is this a recipe or a raw food", so dishes
+  // lead and single foods (count 0) trail. This counts the direct ingredients
+  // the card actually lists, not the expanded leafOrder -- sorting by a number
+  // the reader cannot see on the card would look arbitrary.
   return foods.sort((a, b) =>
-    (!!b.custom - !!a.custom) || a.name.localeCompare(b.name));
+    (!!b.custom - !!a.custom)
+    || ingredientCount(b) - ingredientCount(a)
+    || a.name.localeCompare(b.name));
+}
+
+function ingredientCount(food) {
+  return food.ingredients ? food.ingredients.length : 0;
 }
 
 // The full catalogue is ~540 cards and each card is a couple of dozen nodes, so
