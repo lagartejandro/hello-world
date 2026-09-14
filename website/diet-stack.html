@@ -755,7 +755,9 @@
 
   /* ── Responsive ── */
   @media (max-width: 480px) {
-    .page { padding-top: 32px; }
+    /* Must carry the inset too -- this rule wins over .page above on every
+       phone, so dropping env() here puts the title under the status bar. */
+    .page { padding-top: calc(32px + env(safe-area-inset-top)); }
     .header h1 { font-size: 1.4rem; }
   }
 </style>

@@ -3,6 +3,6 @@
   "appName": "Diet Stack",
   "webDir": "build/app-www",
   "ios": {
-    "contentInset": "always"
+    "contentInset": "never"
   }
 }
