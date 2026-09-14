@@ -1440,7 +1440,7 @@ function renderFoodCard(food) {
 
   // One-glance verdict for the whole card. Any single failure rules the food out,
   // so partial compliance reads the same as none.
-  card.classList.add(activeDiets.some(diet => !food[diet.key]) ? 'card-fail' : 'card-pass');
+  card.classList.add(isCompliant(food) ? 'card-pass' : 'card-fail');
 
   // Diet pills
   const pills = document.createElement('div');
@@ -1774,9 +1774,74 @@ document.getElementById('myRecipesBtn').addEventListener('click', () => {
   renderResults();
 });
 
+// Any single failure rules a food out, so partial compliance reads the same as
+// none. Shared by the card verdict and the browse list so they cannot disagree.
+function isCompliant(food) {
+  for (const key of selectedDiets) if (!food[key]) return false;
+  return true;
+}
+
+// A compound missing an ingredient renders as "can't be checked" -- it has no
+// honest verdict, so it is left out of a compliance-filtered list rather than
+// listed as a pass. With no diets selected nothing is being asserted, so the
+// full catalogue is shown.
+function browseFoods() {
+  const foods = selectedDiets.size
+    ? allFoods.filter(f =>
+        !(f.compound && f.unresolvedRefs && f.unresolvedRefs.length) && isCompliant(f))
+    : allFoods.slice();
+
+  return foods.sort((a, b) =>
+    (!!b.custom - !!a.custom) || a.name.localeCompare(b.name));
+}
+
+// The full catalogue is ~540 cards and each card is a couple of dozen nodes, so
+// paint a screenful at a time and let scrolling pull in the rest.
+const BROWSE_PAGE = 40;
+let browseObserver = null;
+
+function renderBrowse(listEl, metaEl) {
+  const foods = browseFoods();
+  if (!foods.length) {
+    listEl.innerHTML = '<div class="state-msg"><p>No foods match every diet you selected.</p></div>';
+    return;
+  }
+
+  metaEl.textContent = selectedDiets.size
+    ? `${foods.length} food${foods.length !== 1 ? 's' : ''} match your diets`
+    : `${foods.length} foods`;
+
+  const sentinel = document.createElement('div');
+  listEl.appendChild(sentinel);
+
+  let i = 0;
+  let observer = null;
+  function appendPage() {
+    const frag = document.createDocumentFragment();
+    for (let end = Math.min(i + BROWSE_PAGE, foods.length); i < end; i++) {
+      frag.appendChild(renderFoodCard(foods[i]));
+    }
+    listEl.insertBefore(frag, sentinel);
+    if (i >= foods.length && observer) {
+      observer.disconnect();
+      sentinel.remove();
+    }
+  }
+
+  observer = new IntersectionObserver(entries => {
+    if (entries.some(e => e.isIntersecting)) appendPage();
+  }, { rootMargin: '600px' });
+
+  appendPage();
+  if (i < foods.length) observer.observe(sentinel); else sentinel.remove();
+  browseObserver = observer;
+}
+
 function renderResults() {
   const listEl  = document.getElementById('resultsList');
   const metaEl  = document.getElementById('resultsMeta');
+  // Cards from the previous render are about to be dropped; stop feeding them.
+  if (browseObserver) { browseObserver.disconnect(); browseObserver = null; }
   listEl.innerHTML = '';
   metaEl.textContent = '';
 
@@ -1802,12 +1867,9 @@ function renderResults() {
       f.name.toLowerCase().startsWith(currentQuery.toLowerCase())
     ).slice(0, 30);
   } else {
-    // No query: show nothing or a prompt
-    if (selectedDiets.size === 0) {
-      listEl.innerHTML = '<div class="state-msg"><p>Select diets above and search for a food.</p></div>';
-    } else {
-      listEl.innerHTML = '<div class="state-msg"><p>Type a food name to check compliance.</p></div>';
-    }
+    // No query: browse. Everything when no diets are selected, otherwise only
+    // what passes all of them.
+    renderBrowse(listEl, metaEl);
     return;
   }
 
