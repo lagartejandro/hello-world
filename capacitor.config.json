@@ -1,0 +1,8 @@
+{
+  "appId": "com.lagartejandro.dietstack",
+  "appName": "Diet Stack",
+  "webDir": "build/app-www",
+  "ios": {
+    "contentInset": "always"
+  }
+}

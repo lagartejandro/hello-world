@@ -9,9 +9,13 @@
     "cdk": "cdk",
     "deploy": "cdk deploy --all",
     "diff": "cdk diff",
-    "synth": "cdk synth"
+    "synth": "cdk synth",
+    "app:www": "node scripts/build-app-www.mjs",
+    "app:sync": "npm run app:www && npx cap sync ios",
+    "app:open": "npm run app:sync && npx cap open ios"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@types/aws-lambda": "^8.10.145",
     "@types/node": "20.x",
     "aws-cdk": "2.x",
@@ -22,6 +26,8 @@
     "@aws-sdk/client-dynamodb": "^3.600.0",
     "@aws-sdk/client-secrets-manager": "^3.1127.0",
     "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "aws-cdk-lib": "2.x",
     "constructs": "^10.0.0",
     "source-map-support": "^0.5.21"

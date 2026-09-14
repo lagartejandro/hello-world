@@ -2,9 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- viewport-fit=cover is what makes env(safe-area-inset-*) report real numbers;
+     without it the layout stops short of the notch instead of painting under it. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Diet Stack</title>
 <meta name="description" content="Stack multiple diets and check food compliance across all of them at once.">
+<meta name="theme-color" content="#faf9f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#18181b" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <script src="vendor/fuse.min.js"></script>
 <script src="derive.js"></script>
 <style>
@@ -58,6 +65,23 @@
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+  /* Running as a home-screen / wrapped app, the page IS the window: rubber-band
+     scrolling past the end exposes bare chrome and reads as a broken app, and
+     iOS's text inflation reflows the card layout in landscape. */
+  html {
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: none;
+    background: var(--bg);
+  }
+
+  /* touch-action drops the 300ms wait iOS spends checking for a double-tap
+     zoom; the chips and buttons already clear their own tap highlight, this
+     catches the cards, summary rows and anything added later. */
+  button, summary, [role="button"], .food-card, .ing-hit, .prep-tag {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: var(--bg);
@@ -71,7 +95,10 @@
   .page {
     max-width: 720px;
     margin: 0 auto;
-    padding: 48px 20px 80px;
+    /* The insets are 0 everywhere except a notched device in a standalone
+       window, so this is the same 48/20/80 padding on the web. */
+    padding: calc(48px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right))
+             calc(80px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left));
   }
 
   /* ── Header ── */
