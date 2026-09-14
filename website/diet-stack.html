@@ -548,9 +548,6 @@
      sits at 2.82:1, under 3:1, so the relief rule applies — the direct labels below
      the bar are always visible and are not optional. */
   .macros {
-    margin-top: 10px;
-    padding-top: 9px;
-    border-top: 1px solid var(--border);
     --macro-protein: #2a78d6;
     --macro-carbs:   #eb6834;
     --macro-fat:     #1baf7a;
@@ -622,11 +619,45 @@
   .macro-figs b { color: var(--text); font-weight: 600; }
 
   /* ── TCM verdict ── */
-  .tcm-block {
+  /* Card sections are <details>, so open/closed is the browser's business:
+     keyboard, screen readers and find-in-page all work with no state of ours. */
+  .card-sect {
     margin-top: 10px;
     padding-top: 9px;
     border-top: 1px solid var(--border);
   }
+  .card-sect-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+  .card-sect-head::-webkit-details-marker { display: none; }
+  .card-sect-head::after {
+    content: '';
+    margin-left: auto;
+    width: 7px;
+    height: 7px;
+    border-right: 1.6px solid var(--text-faint);
+    border-bottom: 1.6px solid var(--text-faint);
+    transform: rotate(45deg) translate(-2px, -2px);
+    transition: transform 0.15s ease;
+  }
+  .card-sect[open] > .card-sect-head::after {
+    transform: rotate(225deg) translate(-2px, -2px);
+  }
+  .card-sect-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .card-sect-badge { font-size: 0.78rem; color: var(--text-muted); }
+  .card-sect-body { padding-top: 8px; }
   .tcm-head {
     display: flex;
     align-items: center;
@@ -731,9 +762,6 @@
   }
 
   .ingredients {
-    margin-top: 10px;
-    padding-top: 9px;
-    border-top: 1px solid var(--border);
   }
   .ing-list {
     display: flex;
@@ -1018,7 +1046,10 @@ fetch('foods.json')
     console.info(`derived ${baseData.compounds.length + userRecipes.length} compound foods`
                + ` in ${(performance.now() - t0).toFixed(1)}ms`);
   })
-  .catch(() => {
+  .catch(err => {
+    // Without this the message is the only symptom, and a bug in the derivation
+    // looks identical to the file being missing.
+    console.error('food data failed to load', err);
     document.getElementById('resultsList').innerHTML =
       '<div class="state-msg"><p>Could not load food data.</p></div>';
   });
@@ -1190,19 +1221,7 @@ const VERDICT_ICON = {
 // on its own never answered. The tags themselves are shared: the three systems
 // read the same thermal, flavour and preparation data and disagree about it.
 function buildFrameworkBlock(food, framework) {
-  const block = document.createElement('div');
-  block.className = 'tcm-block';
-
   const verdict = frameworkVerdict(food, framework.key);
-
-  const head = document.createElement('div');
-  head.className = 'tcm-head';
-  head.innerHTML = `<span class="tcm-label" style="--c:${framework.color}">${framework.label}</span>`
-    + `<span class="tcm-verdict ${verdict.level}">${VERDICT_ICON[verdict.level]}${verdict.label}</span>`
-    // A dish's profile is averaged from its ingredients, so say so rather than
-    // presenting it with the same confidence as a single food's.
-    + (food.tcm_approx ? `<span class="tcm-approx">approx</span>` : '');
-  block.appendChild(head);
 
   const body = document.createElement('div');
   body.className = 'tcm-body';
@@ -1232,8 +1251,24 @@ function buildFrameworkBlock(food, framework) {
     body.appendChild(notes);
   }
 
-  block.appendChild(body);
-  return block;
+  // The verdict rides on the summary, so collapsing a framework still answers
+  // the only question it was switched on to answer.
+  const sect = document.createElement('details');
+  sect.className = 'card-sect';
+  sect.open = true;
+  const head = document.createElement('summary');
+  head.className = 'card-sect-head tcm-head';
+  head.innerHTML = `<span class="tcm-label" style="--c:${framework.color}">${framework.label}</span>`
+    + `<span class="tcm-verdict ${verdict.level}">${VERDICT_ICON[verdict.level]}${verdict.label}</span>`
+    // A dish's profile is averaged from its ingredients, so say so rather than
+    // presenting it with the same confidence as a single food's.
+    + (food.tcm_approx ? `<span class="tcm-approx">approx</span>` : '');
+  sect.appendChild(head);
+  const wrap = document.createElement('div');
+  wrap.className = 'card-sect-body';
+  wrap.appendChild(body);
+  sect.appendChild(wrap);
+  return sect;
 }
 
 const dietLabel = key => DIETS.find(d => d.key === key)?.label ?? key;
@@ -1439,7 +1474,6 @@ function buildOptional(food) {
 function buildIngredients(food) {
   const wrap = document.createElement('div');
   wrap.className = 'ingredients';
-  wrap.innerHTML = '<div class="section-label">Ingredients</div>';
 
   const list = document.createElement('div');
   list.className = 'ing-list';
@@ -1454,6 +1488,47 @@ function buildIngredients(food) {
   });
   wrap.appendChild(list);
   return wrap;
+}
+
+// open: nutrition and ingredients stay shut until asked for; a framework you
+// deliberately switched on, and a risk warning, open themselves.
+function collapsible(title, body, opts) {
+  opts = opts || {};
+  const sect = document.createElement('details');
+  sect.className = 'card-sect';
+  sect.open = !!opts.open;
+
+  const head = document.createElement('summary');
+  head.className = 'card-sect-head';
+  head.innerHTML = `<span class="card-sect-title">${title}</span>`
+    + (opts.badge ? `<span class="card-sect-badge">${opts.badge}</span>` : '');
+  sect.appendChild(head);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'card-sect-body' + (opts.bodyClass ? ' ' + opts.bodyClass : '');
+  wrap.appendChild(body);
+  sect.appendChild(wrap);
+  return sect;
+}
+
+// Shown on the closed summary, so the headline number survives collapsing.
+function macroBadge(food) {
+  const n = food.nutrients;
+  const amount = food.compound ? food.serving_g : food.portion_g;
+  if (!n || n.kcal == null || !amount) return '';
+  return `${Math.round(n.kcal * amount / 100)} kcal`;
+}
+
+// The reveal line describes the macro bar, so when there are no diet pills to
+// explain it belongs inside the section with the bar rather than above it.
+function appendNutrition(card, food, anyNote) {
+  const macros = buildMacros(food);
+  if (!macros) return;
+  const sect = collapsible('Nutrition', macros, { badge: macroBadge(food) });
+  if (!anyNote) {
+    sect.querySelector('.card-sect-body').prepend(buildNoteLine(card, 'Hover the bar for detail.'));
+  }
+  card.appendChild(sect);
 }
 
 function appendFrameworkBlocks(card, food) {
@@ -1499,14 +1574,13 @@ function renderFoodCard(food) {
       hint.textContent = 'Select diets above to see compliance.';
       card.appendChild(hint);
     }
-    const macrosOnly = buildMacros(food);
-    if (macrosOnly) {
-      card.appendChild(buildNoteLine(card, 'Hover the bar for detail.'));
-      card.appendChild(macrosOnly);
-    }
+    appendNutrition(card, food, false);
     if (food.compound) {
-      if (food.optionalRisks.length) card.appendChild(buildOptional(food));
-      card.appendChild(buildIngredients(food));
+      if (food.optionalRisks.length) {
+        card.appendChild(collapsible('May contain', buildOptional(food), { open: true }));
+      }
+      card.appendChild(collapsible('Ingredients', buildIngredients(food),
+        { badge: food.ingredients.length }));
     }
     appendFrameworkBlocks(card, food);
     if (food.custom) card.appendChild(buildCardActions(food));
@@ -1543,18 +1617,16 @@ function renderFoodCard(food) {
   });
   card.appendChild(pills);
 
-  const macros = buildMacros(food);
   // One reveal line per card, fed by the diet pills and the macro bar alike.
-  if (anyNote || macros) {
-    card.appendChild(buildNoteLine(card, anyNote
-      ? 'Hover a diet to see why.'
-      : 'Hover the bar for detail.'));
-  }
-  if (macros) card.appendChild(macros);
+  if (anyNote) card.appendChild(buildNoteLine(card, 'Hover a diet to see why.'));
+  appendNutrition(card, food, anyNote);
 
   if (food.compound) {
-    if (food.optionalRisks.length) card.appendChild(buildOptional(food));
-    card.appendChild(buildIngredients(food));
+    if (food.optionalRisks.length) {
+      card.appendChild(collapsible('May contain', buildOptional(food), { open: true }));
+    }
+    card.appendChild(collapsible('Ingredients', buildIngredients(food),
+      { badge: food.ingredients.length }));
   }
 
   appendFrameworkBlocks(card, food);
@@ -1851,6 +1923,11 @@ document.getElementById('myRecipesBtn').addEventListener('click', () => {
 
 // Any single failure rules a food out, so partial compliance reads the same as
 // none. Shared by the card verdict and the browse list so they cannot disagree.
+// Anything selected in any section narrows the browse list.
+function isFiltering() {
+  return selectedDiets.size > 0 || selectedFrameworks.size > 0;
+}
+
 function isCompliant(food) {
   for (const key of selectedDiets) if (!food[key]) return false;
   // A framework only ever rules a food out, never in: 'neutral' passes.
@@ -1865,8 +1942,7 @@ function isCompliant(food) {
 // listed as a pass. With no diets selected nothing is being asserted, so the
 // full catalogue is shown.
 function browseFoods() {
-  const filtering = selectedDiets.size || selectedFrameworks.size;
-  const foods = filtering
+  const foods = isFiltering()
     ? allFoods.filter(f =>
         !(f.compound && f.unresolvedRefs && f.unresolvedRefs.length) && isCompliant(f))
     : allFoods.slice();
@@ -1897,7 +1973,7 @@ function renderBrowse(listEl, metaEl) {
     return;
   }
 
-  metaEl.textContent = filtering
+  metaEl.textContent = isFiltering()
     ? `${foods.length} food${foods.length !== 1 ? 's' : ''} match your selection`
     : `${foods.length} foods`;
 
