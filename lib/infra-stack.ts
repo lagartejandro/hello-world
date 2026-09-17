@@ -66,6 +66,8 @@ function handler(event) {
     event.request.uri = '/brew.html';
   } else if (uri === '/chess' || uri === '/chess/') {
     event.request.uri = '/chess.html';
+  } else if (uri === '/lightning' || uri === '/lightning/') {
+    event.request.uri = '/lightning.html';
   }
   return event.request;
 }
